@@ -50,7 +50,7 @@ sequenceDiagram
         L->>W: analyse the mono audio
         loop every 3 s of audio
             W-->>L: more beats, bars, sections (only ever appended)
-            L-->>Page: redraw; progress and time left
+            L-->>Page: redraw, with progress and time left
         end
         L->>DB: save the score
     end
