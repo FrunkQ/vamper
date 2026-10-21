@@ -89,7 +89,7 @@ export function draw(canvas: HTMLCanvasElement, looper: Looper, ui: ViewState) {
     block(g, X(s.t), X(end), 0, COLOURS[(s.group ?? i) % COLOURS.length], `${names[i]} · ${s.label}`, looper.cues.length === 0 && st.cue === i);
   });
   // Cue strip.
-  looper.cues.forEach((c, i) => block(g, X(c.from), X(c.to), STRIP, c.mode === 'loop' ? '#2f6f9f' : '#7a5c2e', `${i + 1} ${c.name}${c.mode === 'loop' ? ' ⟲' : ''}`, st.cue === i));
+  looper.cues.forEach((c, i) => block(g, X(c.from), X(c.to), STRIP, c.mode === 'loop' ? '#2f6f9f' : c.mode === 'riff' ? '#3a8a68' : '#7a5c2e', `${i + 1} ${c.name}${c.mode === 'loop' ? ' ⟲' : c.mode === 'riff' ? ' ⤨' : ''}`, st.cue === i));
 
   // Selection, loop, pending change, playhead.
   if (ui.selection) { g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(X(ui.selection[0]), WAVE_TOP, X(ui.selection[1]) - X(ui.selection[0]), h - WAVE_TOP); }
@@ -98,8 +98,15 @@ export function draw(canvas: HTMLCanvasElement, looper: Looper, ui: ViewState) {
     g.strokeRect(X(st.loop[0]) + 1, WAVE_TOP + 1, X(st.loop[1]) - X(st.loop[0]) - 2, h - WAVE_TOP - 2);
   }
   if (st.pending) { g.fillStyle = '#f0b429'; g.fillRect(X(st.pending.at) - 1, WAVE_TOP, 3, h - WAVE_TOP); }
+  // A riff's jumps: an arc from where it left to where it landed, the latest brightest.
+  const jumps = st.joins.filter(j => j.riff).slice(-6);
+  jumps.forEach((j, k) => {
+    const x0 = X(j.from), x1 = X(j.to), r = Math.abs(x1 - x0) / 2;
+    g.strokeStyle = `rgba(92,214,160,${0.25 + 0.75 * ((k + 1) / jumps.length)})`; g.lineWidth = 2;
+    g.beginPath(); g.ellipse((x0 + x1) / 2, WAVE_TOP + 4, r, Math.min(40, r / 2 + 6), 0, 0, Math.PI); g.stroke();
+  });
   for (const j of st.joins) {
-    if (j.kind === 'loop' && j.score.warn) { g.fillStyle = '#e15759'; g.fillRect(X(j.from) - 2, h - 8, 4, 8); }
+    if (j.kind !== 'change' && j.score.warn) { g.fillStyle = '#e15759'; g.fillRect(X(j.from) - 2, h - 8, 4, 8); }
     if (j.voice !== null && j.voice >= VOICE_QUIET) { g.fillStyle = '#ec70c6'; g.fillRect(X(j.from) - 2, h - 16, 4, 6); }
   }
   if (st.playing) { g.fillStyle = '#fff'; g.fillRect(Math.round(X(st.position)), WAVE_TOP - 4, 2, h - WAVE_TOP + 4); }

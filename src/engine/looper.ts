@@ -3,11 +3,13 @@
 // next quantise point (a bar by default) with a click-free join. No framework, no DOM beyond Web
 // Audio, a Worker and IndexedDB, so it can be dropped into other apps (see docs/ENGINE.md).
 // Optionally (options.voice) it then listens for singing and talking, so changes avoid cutting a
-// vocal line in half; the song plays while it listens.
+// vocal line in half; the song plays while it listens. A `riff` cue plays its bars in a varied
+// order instead of looping them (see riff.ts).
 import { Analyzer } from '../analysis/analyzer';
 import { Cutter } from './cuts';
 import { Deck, type JoinLog } from './deck';
 import { barIndexAt, lastBar, sectionNames, type Quantise } from './plan';
+import { seedOf, type Riff, type RiffOptions } from './riff';
 import { applyDelta, emptyScore, type Score, type ScoreDelta } from '../score/types';
 import { hashFile, loadScore, saveScore } from '../score/cache';
 import { readTags } from '../audio/tags';
@@ -23,10 +25,12 @@ export interface LooperOptions {
 }
 
 /**
- * A passage the music can sit in: `loop` repeats from..to until the next change; `once` plays
- * from `from` and carries on through the song. Times are downbeats (seconds).
+ * A passage the music can sit in: `loop` repeats from..to until the next change; `riff` stays in
+ * from..to too, but plays its bars in a varied order, like a band vamping (the same `seed` gives
+ * the same riff; left out, it comes from the song and the cue's start); `once` plays from `from`
+ * and carries on through the song. Times are downbeats (seconds).
  */
-export interface Cue { name: string; from: number; to: number; mode: 'loop' | 'once' }
+export interface Cue { name: string; from: number; to: number; mode: 'loop' | 'once' | 'riff'; seed?: number }
 
 export interface LoadProgress { stage: 'decode' | 'analyse' | 'done'; done: number; etaSec: number | null; cached: boolean }
 
@@ -40,6 +44,8 @@ export interface LooperState {
   /** A change waiting to land: song time it lands at, seconds until then, and what it is. */
   pending: { at: number; inSec: number; label: string; forVoice: boolean } | null;
   loop: [number, number] | null;
+  /** While riffing: the song bars (1-based) chosen so far, latest last, and how many jumps the passage has. */
+  riff?: { path: number[]; jumps: number };
   joins: JoinLog[];
 }
 
@@ -157,7 +163,8 @@ export class Looper {
     const cue = this.playlist[i];
     if (!cue) return;
     this.cueIndex = i;
-    if (cue.mode === 'loop') this.deck.setLoop(cue.from, cue.to, cue.name);
+    if (cue.mode === 'riff') this.deck.setRiff(cue.from, cue.to, this.riffFor(cue), cue.name);
+    else if (cue.mode === 'loop') this.deck.setLoop(cue.from, cue.to, cue.name);
     else this.deck.change(cue.from, null, cue.name);
   }
 
@@ -166,6 +173,14 @@ export class Looper {
 
   play(from = 0) { this.cueIndex = -1; this.deck.play(from); }
   stop() { this.deck.stop(); }
+  /**
+   * The riff a cue would play: its bar graph (`jumps`, `jumpCount`) and its walk. Options other
+   * than the seed are the defaults unless given (see RiffOptions).
+   */
+  riffFor(cue: Pick<Cue, 'from' | 'to' | 'seed'>, opts: RiffOptions = {}): Riff {
+    return this.deck.riffOn(cue.from, cue.to, { seed: cue.seed ?? seedOf(`${this.score?.track.hash}:${cue.from}`), ...opts });
+  }
+
   /** Loop an arbitrary passage (downbeat times), e.g. a selection. */
   loop(from: number, to: number) { this.cueIndex = -1; this.deck.setLoop(from, to, 'selection'); }
   release() { this.deck.release(); }
@@ -195,6 +210,7 @@ export class Looper {
       playing: d.playing, position: p, bar: this.score ? barIndexAt(this.score, p) + 1 : 0, cue: this.currentCue(),
       pending: d.pending ? { at: d.pending.at, inSec: Math.max(0, d.pending.when - d.ctx.currentTime), label: d.pending.label, forVoice: d.pending.forVoice } : null,
       loop: d.loop, joins: d.joins,
+      ...(d.riff ? { riff: { path: d.riff.path, jumps: d.riff.jumpCount } } : {}),
     };
   }
 }

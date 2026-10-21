@@ -68,6 +68,21 @@ function showVoice() {
 function loadCues(h: string): Cue[] { try { return JSON.parse(localStorage.getItem('cues:' + h) ?? '[]'); } catch { return []; } }
 function saveCues() { try { localStorage.setItem('cues:' + hash, JSON.stringify(looper.cues)); } catch { /* storage off: fine */ } }
 
+// How many jumps a riff cue's passage has (the bar graph doesn't change with the seed, so it is kept).
+const riffInfo = new Map<string, { jumps: number; vocal: number }>();
+function riffSummary(c: Cue) {
+  const key = `${hash}:${c.from}:${c.to}:${looper.voice.state}`;
+  let info = riffInfo.get(key);
+  if (!info) {
+    const r = looper.riffFor(c);
+    info = { jumps: r.jumpCount, vocal: r.jumps.flat().filter(j => !r.voiceClear(j)).length };
+    riffInfo.set(key, info);
+  }
+  return info.jumps ? ` · ${info.jumps} jumps${info.vocal ? ` (${info.vocal} wait for a gap in the vocal)` : ''}` : ' · no bars alike enough to jump between: plays as a loop';
+}
+const MODES = { loop: '⟲ loop', riff: '⤨ riff', once: '→ once' } as const;
+const NEXT_MODE = { loop: 'riff', riff: 'once', once: 'loop' } as const;
+
 function renderCues() {
   const box = $('cues');
   box.innerHTML = '';
@@ -78,11 +93,15 @@ function renderCues() {
     const bars = barStarts(looper.score!);
     const b0 = bars.findIndex(t => Math.abs(t - c.from) < 0.01) + 1, b1 = bars.findIndex(t => Math.abs(t - c.to) < 0.01);
     // A loop whose wrap splits a vocal line (at its end or its start) will be heard every pass.
-    const cuts = c.mode === 'loop' && Math.max(voiceAcross(looper.score!, c.from) ?? 0, voiceAcross(looper.score!, c.to) ?? 0) >= VOICE_QUIET;
-    el.innerHTML = `<button data-go>${i + 1}</button><input value="${c.name.replace(/"/g, '&quot;')}" /><small>bars ${b0}–${b1 > 0 ? b1 : 'end'}${cuts ? ' <span title="The loop wraps in the middle of a sung or spoken line">🎤 wrap cuts a vocal</span>' : ''}</small><button data-mode>${c.mode === 'loop' ? '⟲ loop' : '→ once'}</button><button data-del>✕</button>`;
+    const cuts = c.mode !== 'once' && Math.max(voiceAcross(looper.score!, c.from) ?? 0, voiceAcross(looper.score!, c.to) ?? 0) >= VOICE_QUIET;
+    el.innerHTML = `<button data-go>${i + 1}</button><input value="${c.name.replace(/"/g, '&quot;')}" /><small>bars ${b0}–${b1 > 0 ? b1 : 'end'}${c.mode === 'riff' ? riffSummary(c) : ''}${cuts ? ' <span title="The loop wraps in the middle of a sung or spoken line">🎤 wrap cuts a vocal</span>' : ''}</small><button data-mode title="Loop the bars as they are, riff on them (a varied order), or play on through the song">${MODES[c.mode]}</button>${c.mode === 'riff' ? '<button data-seed title="Another riff on the same bars">🎲</button>' : ''}<button data-del>✕</button>`;
     el.querySelector<HTMLButtonElement>('[data-go]')!.onclick = () => looper.goTo(i);
     el.querySelector('input')!.onchange = e => { c.name = (e.target as HTMLInputElement).value; saveCues(); };
-    el.querySelector<HTMLButtonElement>('[data-mode]')!.onclick = () => { c.mode = c.mode === 'loop' ? 'once' : 'loop'; saveCues(); renderCues(); };
+    el.querySelector<HTMLButtonElement>('[data-mode]')!.onclick = () => { c.mode = NEXT_MODE[c.mode]; saveCues(); renderCues(); };
+    el.querySelector<HTMLButtonElement>('[data-seed]')?.addEventListener('click', () => {
+      c.seed = Math.floor(Math.random() * 2 ** 32); saveCues();
+      if (looper.state().cue === i && looper.deck.riff) looper.goTo(i); // the new riff takes over at the next bar
+    });
     el.querySelector<HTMLButtonElement>('[data-del]')!.onclick = () => { looper.cues.splice(i, 1); saveCues(); renderCues(); };
     box.append(el);
   });
@@ -164,12 +183,14 @@ function frame() {
     const cue = list[st.cue];
     let html = st.playing ? `Bar <b>${st.bar}</b>` : 'Stopped';
     if (cue) html += ` · ${looper.cues.length ? 'cue' : 'section'} <b>${cue.name}</b>`;
-    if (st.loop) html += ' · looping';
+    if (st.riff) html += ` · riffing ⤨ bars ${st.riff.path.slice(-8).join(' ')} (the last ones queued)`;
+    else if (st.loop) html += ' · looping';
     if (st.pending) html += ` · next change: <b>${st.pending.label}</b> in ${st.pending.inSec.toFixed(1)} s${st.pending.forVoice ? ' (waiting for a gap in the vocal)' : ''}`;
     $('readout').innerHTML = html;
     const vs = looper.voice.state;
     $('joins').textContent = (vs === 'off' ? '' : `voice pass: ${vs}${looper.voice.why ? ' (' + looper.voice.why + ')' : ''}, waits up to ${looper.voiceWaitBars} bars for a gap\n`) +
-      (st.joins.map(j => `${j.kind.padEnd(6)} ${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s   step ${j.score.db} dB   match ${j.score.r}   voice ${j.voice === null ? '?' : j.voice.toFixed(2)}${j.kind === 'loop' && j.score.warn ? '   ⚠ may be audible' : ''}${j.voice !== null && j.voice >= VOICE_QUIET ? '   🎤 cuts a vocal' : ''}`).reverse().join('\n') || 'No joins yet.');
+      (st.riff ? `riff path (bars, latest last): ${st.riff.path.join(' ')}\n${st.riff.jumps} possible jumps in this passage\n` : '') +
+      (st.joins.map(j => `${j.kind.padEnd(6)} ${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s${j.riff ? `   bar ${j.riff.after} → ${j.riff.into}, alike ${j.riff.sim}` : ''}   step ${j.score.db} dB   match ${j.score.r}   voice ${j.voice === null ? '?' : j.voice.toFixed(2)}${j.kind !== 'change' && j.score.warn ? '   ⚠ may be audible' : ''}${j.voice !== null && j.voice >= VOICE_QUIET ? '   🎤 cuts a vocal' : ''}`).reverse().join('\n') || 'No joins yet.');
   }
   if (st.cue !== lastCue || looper.voice.state !== voiceShown) { lastCue = st.cue; renderCues(); }
   showVoice();

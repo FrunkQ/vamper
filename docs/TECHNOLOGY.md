@@ -104,6 +104,8 @@ flowchart TB
 - the **bass notes**, from YIN pitch detection on the low band;
 - the **loudness** of each band, and how busy the drums are.
 
+These features also go into the score (as `bars`), so Vamper can tell which bars sound alike when it riffs (see [Riffing](#riffing-vamping-instead-of-looping)).
+
 **Phrases.** Music moves in blocks of four bars. Each phrase's bars are compared with every earlier phrase. If they are more than 90% alike, it is marked as a repeat and shares the earlier phrase's id.
 
 **Sections.** At each bar, the analyser compares the next four bars with the four before. It looks at loudness, which bands are playing, harmony and drum density. A big enough change, judged against how restless this particular song is, starts a new section, preferably on a phrase boundary. Each section gets a label (intro, verse, chorus, breakdown, drop, outro), an energy level, and a **group**: sections that sound alike (more than 92.5% similar in groove, harmony, bass and band loudness) share a group, which Vamper shows as the same letter (A, B, C...).
@@ -141,11 +143,33 @@ What it can't do: it hears *a voice*, not words, so it can't find the end of a s
 A **cue** is a passage the music can sit in: a name, a start bar, an end bar, and a mode.
 
 - **Loop** repeats the passage until you move on.
+- **Riff** stays in the passage too, but plays its bars in a varied order, like a band vamping (see [Riffing](#riffing-vamping-instead-of-looping)).
 - **Once** plays from the passage's start and carries on through the song.
 
 Until you make your own cues, every section is a cue (a loop), so a song is playable the moment it is analysed. You make a cue by dragging across bars and pressing **+ Cue**. Cues are saved in your browser, keyed by the song file's fingerprint, so they come back when you open the same file again.
 
 In play you orchestrate: **Next** and **Back** step through the cues in order, number keys jump straight to one, and clicking a block on the strip goes there.
+
+## Riffing: vamping instead of looping
+
+A loop is a tape: the same eight bars, in the same order, for as long as the scene lasts. Half an hour of exploring and the players can hum the wrap. A band vamping does something else: it stays in the same groove but goes round it differently, repeats a phrase, skips back to the turnaround, comes back to the top. A **riff** cue does that with the bars of its passage.
+
+```mermaid
+flowchart LR
+    F[Each bar's features<br/>drum grid · harmony · bass notes · loudness] --> G[Graph over the passage:<br/>next bar, plus jumps<br/>between bars that sound alike]
+    J[Cutter: how big a step<br/>each jump's cut would be] --> G
+    G --> W[Seeded walk:<br/>mostly in order, a jump every few bars]
+    V[Voice curve] --> W
+    W --> D[Deck plays runs of bars<br/>with the same seamless joins]
+```
+
+**Which bar can follow which.** Every bar can be followed by the next one (and the last by the first, as in a loop). Vamper also adds a **jump** from bar *i* to bar *j* when bar *j* sounds like the bar that would have come next, and the bar before *j* sounds like bar *i*: same drum pattern, same harmony, same bass notes, about as loud. Then the music lands where it might have been anyway. A jump also has to keep the place in the phrase (the third bar of a phrase only jumps to a third bar), so the music still breathes in fours, and the cut itself must not step in loudness by more than 3 dB, the same test that flags a rough loop wrap.
+
+**How it walks.** Mostly in order. Every three to five bars it takes a jump if one fits, preferably where a phrase starts. It never takes the same jump twice running. It never jumps out of, or into, the middle of a sung line (the [voice curve](#listening-for-voices)). The choice is random but **seeded**: the same cue riffs the same way every time, from the song's fingerprint and where the cue starts, and the 🎲 button picks another riff for that cue.
+
+**What you see.** The cue list says how many jumps the passage has ("8 jumps"), or that its bars are too different to jump between, in which case it plays as a plain loop. While it riffs, the readout lists the bars ("riffing ⤨ bars 13 14 11 12 13 14 15 16"), each jump draws a green arc over the waveform from where it left to where it landed, and **Joins (debug)** lists the whole path and every jump with its bars, how alike they are and the loudness step of its cut. Talk about a jump that sounds wrong by its bars ("12 → 9 stumbles").
+
+Every jump is a join like any other, made with the same five steps below, so it should be as inaudible as a loop's wrap. What it can't know: whether a jump makes musical sense beyond sounding alike, such as jumping out of a guitar solo's build. That is what the listening tests are for.
 
 ## Moving on: when a change lands
 
@@ -227,13 +251,14 @@ flowchart LR
     G[Make 3 synthetic songs<br/>known tempo and sections] --> A[Analyse them]
     A --> P[Plan a session:<br/>loop 4 bars ×3, change mid-pass<br/>to the next section, step back]
     P --> R[Render it offline with<br/>the same cut and fade code]
+    A --> G2[Riff 8 bars for 32 bars,<br/>check the walk's rules] --> R
     R --> M[Measure every join]
     M --> C1[Click: no sample jump bigger<br/>than the song's own biggest]
     M --> C2[Level: no dip or bump<br/>beyond 1.5 dB in the fade]
     M --> C3[Groove: the bar across the join<br/>matches the source within 3 ms]
 ```
 
-All 12 joins pass. It also checks the voice-aware choice of bar on a made-up voice curve: a line across the next two bar lines makes a change wait for the third, no voice means no wait, and waiting can be turned off. The test does catch real mistakes: when a cut was deliberately moved by 4.5 ms, every join failed the groove check. It can't tell you how a join on a real song sounds. For that, listen and report the times from the **Joins (debug)** list ("change at 20.318 s clicks").
+All 12 joins pass. It then riffs on eight bars of each track for 32 bars and checks the walk: there are jumps, it takes some, at least half the bars follow the one before, no jump twice running, every jump keeps the place in the phrase, the same seed gives the same riff, and a sung line over the whole passage stops every jump. The riff's 24 joins are measured like the others and pass. It also checks the voice-aware choice of bar on a made-up voice curve: a line across the next two bar lines makes a change wait for the third, no voice means no wait, and waiting can be turned off. The test does catch real mistakes: when a cut was deliberately moved by 4.5 ms, every join failed the groove check. It can't tell you how a join on a real song sounds. For that, listen and report the times from the **Joins (debug)** list ("change at 20.318 s clicks").
 
 ## The installable app
 
@@ -259,6 +284,6 @@ A Foundry VTT module would work the same way: the GM's browser analyses, and eve
 
 ## Not yet
 
-- **Riffing:** playing bars from a passage in a varied order, like a band vamping rather than a tape loop. The analyser already computes each bar's drum grid, harmony and bass notes. Riffing needs those exposed, plus a "which bar can follow which" graph.
+- **Riffs that follow the game:** a riff that leans toward its louder, busier bars as the tension rises, and back.
 - **Smarter change points:** using the analyser's moments, such as changing on a stop or riding a build into a combat cue.
 - An AudioWorklet deck, grid repair (shift the downbeat, halve or double the tempo, drag a bar line), cue sheets as files, a big-button live mode, and playlists of songs.

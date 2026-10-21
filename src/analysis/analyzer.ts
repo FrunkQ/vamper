@@ -1,5 +1,7 @@
-// Vendored from Gondryator (https://github.com/FrunkQ/gondryator, The Unlicense). One change: two unused
-// private fields removed, so the file compiles under stricter apps (see tsconfig.lib.json).
+// Vendored from Gondryator (https://github.com/FrunkQ/gondryator, The Unlicense). Two changes: two unused
+// private fields removed, so the file compiles under stricter apps (see tsconfig.lib.json); and each
+// bar's features (drum grid, chroma, bass notes, band loudness, density) are sent in the delta as
+// `bars`, for riffing (src/engine/riff.ts).
 // Progressive music analysis: audio -> score, front to back, in chunks.
 //
 // This is the "bands" engine: no neural stem separation. Drums are found from band-split
@@ -12,7 +14,7 @@
 
 import { DEFAULT_TUNING, type Tuning } from './tuning';
 import { FFT, biquad, clamp, decimate, halve, hzToMidi, percentile, yin } from './dsp';
-import type { Beat, EventKind, Moment, Phrase, ScoreDelta, ScoreEvent, Section, Stem } from '../score/types';
+import type { BarFeature, Beat, EventKind, Moment, Phrase, ScoreDelta, ScoreEvent, Section, Stem } from '../score/types';
 
 const N = 1024; // STFT size at ~22 kHz
 const HOP = 256; // ~11.6 ms
@@ -119,7 +121,7 @@ export class Analyzer {
 
   // Commit bookkeeping.
   private committedSec = 0;
-  private sentBeats = 0; private sentSections = 0; private sentPhrases = 0; private sentTempo = 0; private sentMoments = 0;
+  private sentBeats = 0; private sentSections = 0; private sentPhrases = 0; private sentTempo = 0; private sentMoments = 0; private sentBars = 0;
   private sentEnv = 0;
   private eventId = 0;
   private drumEnv = 0;
@@ -1146,6 +1148,14 @@ export class Analyzer {
     this.momentsOut.splice(this.sentMoments, unsent.length, ...unsent);
     const moments = unsent.filter(m => m.t < frontier);
     this.sentMoments += moments.length;
+    // Per-bar features, rounded (they are compared, not played).
+    const bars: BarFeature[] = [];
+    for (; this.sentBars < this.barFeatures.length; this.sentBars++) {
+      const t = this.barTime(this.sentBars + 1);
+      if (t >= frontier) break;
+      const f = this.barFeatures[this.sentBars], top = (v: Float32Array) => { const m = Math.max(1e-9, ...v); return [...v].map(x => Math.round((x / m) * 100) / 100); };
+      bars.push({ t: round3(t), bar: this.sentBars + 1, grid: [...f.grid].map(x => Math.round(x * 100) / 100), chroma: top(f.chroma), bass: top(f.bassPc), db: f.db.map(x => Math.round(x * 10) / 10), density: f.density.map(x => Math.round(x * 100) / 100) });
+    }
 
     // Envelopes at 50 Hz.
     const envTo = Math.floor(frontier * ENV_RATE);
@@ -1177,7 +1187,7 @@ export class Analyzer {
     this.committedSec = frontier;
     const wall = (performance.now() - this.startWall) / 1000;
     return {
-      frontierSec: round3(frontier), final, tempo, beats, sections, phrases, moments, events,
+      frontierSec: round3(frontier), final, tempo, beats, sections, phrases, moments, bars, events,
       envelopes: env, envelopeRate: ENV_RATE,
       realtimeFactor: Math.round((this.analyzedSec / Math.max(1e-3, wall)) * 10) / 10,
     };

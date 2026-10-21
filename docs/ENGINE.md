@@ -3,7 +3,7 @@
 The plain-English tour with diagrams is [TECHNOLOGY.md](TECHNOLOGY.md); this page maps the files.
 
 ```
-song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) ──> Score (beats, bars, phrases, sections)
+song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) ──> Score (beats, bars + bar features, phrases, sections)
                                     │                                   │
                                     └──> Cutter (cut points, fades) <───┘
                                                   │
@@ -20,12 +20,13 @@ song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) �
 | `src/engine/looper.ts` | **The one class an app needs.** `load(file)`, `cues`, `goTo(i)`, `next()`, `prev()`, `play()`, `stop()`, `loop(from, to)`, `release()`, `pause()`, `resume()`, `setVolume(gain, rampSec)`, `dispose()`, `state()`. Falls back to analysing on the main thread when a Worker can't be created. |
 | `src/engine/deck.ts` | Live playback: a chain of `AudioBufferSourceNode`s, each with a gain node for its crossfades, queued 2.5 s ahead on the AudioContext clock. Quantised changes (`change`), loops (`setLoop`), play on (`release`). |
 | `src/engine/cuts.ts` | Sample-level cuts, pure TypeScript: attack refinement, join fitting, the crossfade curve, the join score, and `render()` (the same chain, offline, for tests). |
+| `src/engine/riff.ts` | Riffing: `Riff` builds the bar graph of a passage (`jumps`, from `score.bars` and the Cutter's join score) and walks it with a seeded random generator (`start(k)`, `next()` gives the next run of bars). `barSimilarity`, `seedOf`. |
 | `src/engine/plan.ts` | Musical decisions on the score: bar starts, the next beat/bar/phrase, the following section, section letters; the voice curve (`voiceAt`, `voiceAcross`) and the voice-aware next cut (`nextCut`). |
 | `src/analysis/voice.ts`, `voice.worker.ts` | The voice pass: YAMNet (via MediaPipe, WebAssembly) in a worker writes `score.envelopes.voice`, final up to `score.soundsFrontier`. Cut down from Gondryator's sound pass. The model files are `public/models/`. |
 | `src/main.ts`, `src/view.ts` | The editor page, a thin layer over `Looper`: canvas strip and waveform, buttons, keys, cue list (saved in `localStorage` by file hash). |
 | `src/analysis/*`, `src/score/*`, `src/audio/tags.ts` | Vendored from Gondryator, unchanged except the worker (no auto-tune), the cache's database name and the voice pass (above). |
 | `public/sw.js`, `public/manifest.webmanifest`, `public/icon*` | The installable app: manifest, icons, and a service worker that caches the page (network first) and the hashed build files (cache first) so it opens offline. Bump `CACHE` in `sw.js` if its caching rules change. |
-| `tools/join-test.mjs` | The headless join test (`npm test`), and the voice-aware choice of bar on a made-up voice curve. |
+| `tools/join-test.mjs` | The headless join test (`npm test`): a loop-and-change session and a 32-bar riff per track, the riff walk's rules, and the voice-aware choice of bar on a made-up voice curve. |
 
 Using the engine elsewhere: install it from this repository, pinned to a commit (`npm install github:FrunkQ/vamper#<commit>`), rather than copying files, so every fix arrives exactly. The README's "Use the engine in your own app" has a worked example; Mappadux is the first app to use it (`src/audio/VamperSongPlayer.ts` there).
 
@@ -64,6 +65,20 @@ Where a join goes:
 
 The join score (`Cutter.score`) is the loudness step between what would have followed the cut and what follows instead, over 80 ms. For a loop's wrap, more than 3 dB is flagged as likely audible (a red mark under the waveform, ⚠ in the debug list). For a change of section a big step is just the music changing.
 
+## Riffs
+
+A `riff` cue (`{ mode: 'riff', seed? }`) stays inside its passage like a loop but plays its bars in a varied order. `Looper.riffFor(cue)` builds the `Riff`; `Deck.setRiff(a, b, riff)` plays it (inside the passage: the playing segment ends at the next reachable bar line and the walk starts there; outside: a change, as for a loop).
+
+**Bar features.** The analyser's per-bar features go into the score as `score.bars` (one `BarFeature` per bar: `grid` 3×16 drum velocities, `chroma` 12, `bass` pitch-class histogram 12, band `db` 3, `density` 3), rounded to two decimals, about 400 bytes a bar. Scores cached before this (`ENGINE_KEY` v9) are re-analysed once.
+
+**The graph.** Over the passage's n bars, bar i is followed by i+1 (the last by the first: the loop's own wrap), and may jump to j when:
+- j keeps the place in the phrase: `(j − (i+1)) mod unit = 0`, where `unit` is 4 for passages of whole phrases of 8+ bars, 2 for other even lengths, else 1;
+- `0.65 × barSimilarity(j, i+1) + 0.35 × barSimilarity(j−1, i)` ≥ 0.8 (`minSimilarity`). `barSimilarity` is the cosine of the drum grid, chroma and bass histogram (weights 1, 0.64, 0.36, as the analyser compares phrases), less 0.03 per dB of band loudness difference beyond 2 dB;
+- the cut's loudness step (`Cutter.score` between the bar it lands on and the bar that would have played: i+1, or the first bar after the last) is at most 3 dB (`maxDb`).
+Without bar features (an old or MIDI score) the similarity is `1 − step/6`.
+
+**The walk** (`Riff.next`): bars in order until a jump is due. A jump is due `jumpEvery − 1` to `jumpEvery + 1` bars (default 3 to 5) after the last, at a phrase start (or up to two bars later if none comes), never the same jump twice running, and only where `voiceClear`: no voice across the cut or the landing (checked live, so the voice curve can arrive later). Choices are weighted by `(sim − 0.7)² + 0.01`. The random generator is seeded (`seed`, else `seedOf(songHash:cueStart)`), so the same cue from the same bar replays the same riff. Each run of bars in order is one segment; jumps are logged as `JoinLog` `kind: 'riff'` with `riff: { after, into, sim }` (song bars); the wrap is `kind: 'loop'`. `state().riff` has the path (song bars, latest last, including what is queued) and the passage's jump count.
+
 ## Changes
 
 `Deck.change(target, loop, label)` finds the next quantise point after now + 120 ms (`beat`, `bar`, `phrase`, or `loop` = the end of the current pass), ends the playing segment there and queues the target. A change inside the passage being looped (`setLoop` with the playhead inside) just moves the wrap point. `release()` lets the loop play on into the song. The readout's countdown comes from `deck.pending`.
@@ -76,4 +91,4 @@ What it can't tell you: whether a join on real music is heard. That's Alex's lis
 
 ## Not yet
 
-Voice-aware snapping of cue ends when they are made; voice-aware loop wraps. Riffing (re-ordering bars, needs per-bar features exposed from `Analyzer.barFeature()`), an AudioWorklet deck, grid repair (shift downbeat, halve/double, drag a bar line), cue sheets as JSON files and in IndexedDB, a big-button live mode, playlists.
+Voice-aware snapping of cue ends when they are made; voice-aware loop wraps. Riffs that follow the game's intensity (a riff cue that leans toward its louder bars as tension rises); an AudioWorklet deck, grid repair (shift downbeat, halve/double, drag a bar line), cue sheets as JSON files and in IndexedDB, a big-button live mode, playlists.
