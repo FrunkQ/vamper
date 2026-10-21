@@ -55,6 +55,14 @@ looper.voiceWaitBars = 2; // how many extra bars a change may wait for a gap in 
 `load()` still resolves when the song is playable; the voice pass carries on behind it (`onChange` fires as it goes) and saves its curve with the cached score. Without the option nothing changes, and the pass's worker (about 57 kB, it pulls in `@mediapipe/tasks-audio`, Vamper's one dependency) is never loaded.
 
 The package is TypeScript source (`exports` points at `src/index.ts`); the app's bundler compiles it. With Vite, list it in `optimizeDeps.exclude` so the worker URL survives. No framework; one dependency, `@mediapipe/tasks-audio`, used only by the optional voice pass. The worker is loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand; elsewhere it quietly analyses on the main thread instead.
+Using the engine elsewhere: install it from this repository, pinned to a commit (`npm install github:FrunkQ/vamper#<commit>`), rather than copying files, so every fix arrives exactly. The README's "Use the engine in your own app" has a worked example; Mappadux is the first app to use it (`src/audio/VamperSongPlayer.ts` there).
+
+- **The package** is TypeScript source: `exports` points at `src/index.ts`, and `files` in `package.json` lists what an app receives (the engine, analysis, score cache, tag reader, licence and docs). The app's bundler compiles it.
+- **Public API** = what `src/index.ts` exports. Add to it; don't rename or remove, or a pinned app breaks on its next update.
+- **Strictness:** `tsconfig.lib.json` compiles the engine under Mappadux's flags (`exactOptionalPropertyTypes`, `noUnused*`, `verbatimModuleSyntax`); `npm run typecheck` runs it, and so does CI.
+- **Worker:** loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand (with Vite, list `vamper` in `optimizeDeps.exclude`); elsewhere it quietly analyses on the main thread instead.
+- **Cues:** a `once` cue plays on from `from` to the end of the song; its `to` is ignored. `barSpan(score, from, to)` turns rough seconds into a whole-bar passage at least one bar long (`to` null = the last bar).
+- **Storage:** scores are cached in IndexedDB database `vamper` (store `scores`), keyed by a hash of the file.
 
 ## Segments and joins
 

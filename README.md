@@ -12,6 +12,43 @@ In film and game scoring, *vamping* is holding a phrase until the action moves o
 2. Until you make cues, every section is a cue. To make your own, drag across the waveform to select bars and press **+ Cue** (or `C`). Each cue loops until you move on, or plays **once** and carries on.
 3. Play with `Space`, step with `←` `→`, jump with `1`-`9`, or click a block on the strip. The readout says when the change will land.
 
+## Use the engine in your own app
+
+The engine is a small, framework-free TypeScript library: one `Looper` class over Web Audio, a Worker and IndexedDB, no dependencies. [Mappadux](https://www.mappadux.com/) uses it for its local-song soundtracks. Install it straight from this repository, pinned to a commit, so you get exactly the engine that was tested here:
+
+```
+npm install github:FrunkQ/vamper#<commit>
+```
+
+```ts
+import { Looper, barSpan } from 'vamper';
+
+const looper = new Looper();
+await looper.load(file, p => console.log(p.stage, Math.round(p.done * 100) + '%'));   // a File; wrap a Blob with new File([blob], name)
+
+// Cues are passages of the song. barSpan turns rough seconds into whole bars.
+const [calmFrom, calmTo] = barSpan(looper.score!, 0, 30);
+const [fightFrom, fightTo] = barSpan(looper.score!, 95, 125);
+looper.cues = [
+  { name: 'Calm',  from: calmFrom,  to: calmTo,  mode: 'loop' },
+  { name: 'Fight', from: fightFrom, to: fightTo, mode: 'loop' },
+];
+
+looper.goTo(0);            // starts at once from silence
+looper.goTo(1);            // while playing: changes on the next bar, seamlessly
+looper.state();            // position, bar, current cue, the pending change and its countdown
+looper.setVolume(0.8, 1.5); looper.pause(); looper.resume(); looper.dispose();
+```
+
+- **It's TypeScript source**, compiled by your bundler. With Vite, add `optimizeDeps: { exclude: ['vamper'] }` so the analysis worker loads (without a worker it still works, on the main thread). For Vitest, add `test.server.deps.inline: ['vamper']`.
+- **Make the first `play`/`goTo` from a click**, as browsers require for audio.
+- **Analysis is cached** per song (by content hash) in the browser's IndexedDB, in a database called `vamper`, so each song is analysed once per device.
+- **To take an update**, re-pin to a newer commit; Mappadux's `npm run vamper:update` does it in one step. The public API is everything exported from [`src/index.ts`](src/index.ts) and only grows: names are added, not renamed.
+
+How it works inside: [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md). Every method and file: [docs/ENGINE.md](docs/ENGINE.md).
+
+**Credit:** Vamper is [MIT licensed](LICENSE). The licence requires its notice to stay with the code (installing the package does that: `LICENSE` ships in it). Please also credit it where your users can see it, such as an About page or credits list: *Music engine: [Vamper](https://github.com/FrunkQ/vamper) by FrunkQ.*
+
 ## Run it yourself
 
 Node 22.12 or newer: `npm install`, `npm run dev`, open the printed URL. `npm test` runs the headless join test.
@@ -25,7 +62,9 @@ The site is static files in `dist/`; `wrangler.jsonc` tells Cloudflare to serve 
 
 ## Credits and licence
 
-Public domain under [The Unlicense](LICENSE).
+[MIT](LICENSE), copyright Alex (FrunkQ). Use it, change it and ship it, including commercially. The licence requires one thing: keep the copyright and licence notice with any copy of the code. Beyond that, please credit Vamper where your users can see it.
+
+Versions before 21 October 2026 (up to commit `f4bfc39`) were released under The Unlicense and stay so.
 
 The music analysis (beats, bars, phrases, sections, moments), the score cache and the tag reader are vendored from [Gondryator](https://github.com/FrunkQ/gondryator) (The Unlicense), with thanks. The YIN pitch detector inside it is from A. de Cheveigné and H. Kawahara, "YIN, a fundamental frequency estimator for speech and music", JASA 2002. The voice pass, which keeps changes from cutting a sung line, is cut down from the Gondryator's sound pass and runs Google's [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) sound classifier (trained model, `public/models/yamnet/`) with [MediaPipe Tasks Audio](https://github.com/google-ai-edge/mediapipe) (`@mediapipe/tasks-audio`, its WebAssembly runtime in `public/models/mediapipe/`), both © Google LLC under the Apache License 2.0 ([full text](licenses/Apache-2.0.txt)). The idea of jumping between similar parts of a song owes a lot to Paul Lamere's Infinite Jukebox.
 

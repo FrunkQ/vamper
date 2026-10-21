@@ -53,7 +53,7 @@ sequenceDiagram
         L->>W: analyse the mono audio
         loop every 3 s of audio
             W-->>L: more beats, bars, sections (only ever appended)
-            L-->>Page: redraw; progress and time left
+            L-->>Page: redraw, with progress and time left
         end
         L->>DB: save the score
     end
@@ -238,6 +238,24 @@ All 12 joins pass. It also checks the voice-aware choice of bar on a made-up voi
 ## The installable app
 
 Vamper is a Progressive Web App: a web manifest, icons, and a service worker that caches the page so it opens offline. Install it from the browser's address bar or the **Install app** button. Songs are never fetched over the network, so the cache never holds your music. Scores (the analysis, not the audio) and cues are kept in your browser's own storage.
+
+## Inside other apps
+
+The Vamper page is a thin layer: everything that hears, cuts and plays lives in the engine, behind one class, `Looper`. That makes the engine a library other apps can use. They install it **from this repository, pinned to a commit**, rather than copying files, so a fix tested here reaches them exactly and nothing drifts.
+
+```mermaid
+flowchart LR
+    V[FrunkQ/vamper<br/>tested here: join test, listening] -->|npm install<br/>github:FrunkQ/vamper#commit| M[Mappadux<br/>Soundtracks panel]
+    V --> W[vamper.starsystemx.com<br/>the Vamper page]
+    M -->|slots on one song| C[Cues]
+    C --> L[Looper.goTo<br/>changes on the next bar]
+```
+
+**Mappadux** is the first. Its Soundtracks panel has slots ("Tavern", "Combat"), and a slot can now hold a song from the GM's audio library. Every slot on the same song becomes a cue: the slot's Start and End become the passage (snapped to whole bars by `barSpan`), and Loop decides between `loop` and `once`. Picking another slot on the same song calls `goTo`, so the music changes on the next bar with the same seamless join as here. Picking a YouTube or Spotify slot still crossfades. The songs travel inside Mappadux's `.mappadux` packs; each device analyses a song once and caches the score.
+
+What an app gets is the package entry, `src/index.ts`: `Looper` and the cue types, plus the bar helpers (`barSpan`, `snapToBar`, `barStarts`, `lastBar`, `sectionNames`). It is TypeScript source compiled by the app's own bundler, and a CI check compiles it under the strictest settings an app uses, so an engine change that would break an app fails here first. Exported names are added, never renamed. The README's "Use the engine in your own app" has the code.
+
+A Foundry VTT module would work the same way: the GM's browser analyses, and every player's browser plays its own copy and changes on the same bar.
 
 ## Not yet
 

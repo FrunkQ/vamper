@@ -9,7 +9,7 @@ Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until 
 - Never a blank screen; every wait shows progress and a time.
 - The engine must stay small and framework-free: Alex reuses it in other apps. `Looper` (src/engine/looper.ts) is the public face; keep UI out of `src/engine`.
 - The engine is a package other apps install from this repo by commit (Mappadux does: `"vamper": "github:FrunkQ/vamper#<commit>"`). Its public API is `src/index.ts`; changing anything exported there can break them, so add rather than rename. They compile the source with stricter flags than the app, so `npm run typecheck` (which includes `tsconfig.lib.json`) must pass. Files they get are listed in `package.json` `files`.
-- Licence: The Unlicense; credit third-party code in the README.
+- Licence: MIT (since 2026-10-21; earlier versions were The Unlicense). Credit third-party code in the README. The files vendored from Gondryator keep their 'The Unlicense' header: that is the licence they came under.
 - Alex listens on the deployed site, https://vamper.starsystemx.com. You can't judge audio in a container: ship, give the commit hash, and ask which joins they hear. The debug list (Joins) gives times to talk about.
 
 ## Rules of the engine
