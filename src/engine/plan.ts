@@ -17,6 +17,25 @@ export function snapToBar(score: Score, t: number): number {
   return best;
 }
 
+/** The last downbeat before `end` (so a final section's loop is whole bars). */
+export function lastBar(score: Score, end: number): number {
+  let t = end;
+  for (const b of score.beats) if (b.downbeat && b.t < end - 0.5) t = b.t;
+  return t;
+}
+
+/**
+ * Rough times (say, a playhead grabbed by hand) turned into a passage of whole bars: both ends
+ * snap to the nearest downbeat, a missing end means the last bar, and it is at least one bar long.
+ */
+export function barSpan(score: Score, from: number, to: number | null): [number, number] {
+  const bars = barStarts(score), last = lastBar(score, score.track.durationSec);
+  const a = Math.min(snapToBar(score, from), bars.filter(t => t < last).pop() ?? from);
+  let b = to === null ? last : snapToBar(score, to);
+  if (b <= a + 0.05) b = bars.find(t => t > a + 0.05) ?? last;
+  return [a, b];
+}
+
 /** The bar index (0-based into barStarts) that starts at or before t, or -1. */
 export function barIndexAt(score: Score, t: number): number {
   const bars = barStarts(score);

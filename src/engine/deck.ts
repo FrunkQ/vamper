@@ -41,9 +41,26 @@ export class Deck {
   joins: JoinLog[] = [];
   onChange: (() => void) | null = null;
 
+  private timer: ReturnType<typeof setInterval>;
+
   constructor() {
     this.out.connect(this.ctx.destination);
-    setInterval(() => this.tick(), 40);
+    this.timer = setInterval(() => this.tick(), 40);
+  }
+
+  /** Output level (linear gain, 1 = as recorded), ramped over `rampSec` so a fade is click-free. */
+  setVolume(gain: number, rampSec = 0) {
+    const g = this.out.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(Math.max(0, gain), now + Math.max(0.01, rampSec));
+  }
+
+  /** Stop for good: release the audio device and the timer. */
+  dispose() {
+    this.stop();
+    clearInterval(this.timer);
+    void this.ctx.close();
   }
 
   load(buffer: AudioBuffer, cutter: Cutter, score: Score) {

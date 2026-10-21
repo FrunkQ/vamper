@@ -1,0 +1,12 @@
+{
+  "//": "The engine as other apps compile it (Mappadux's flags): keep it passing so it can be shared as source.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src/index.ts"]
+}

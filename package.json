@@ -5,10 +5,23 @@
   "private": true,
   "type": "module",
   "license": "Unlicense",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src/index.ts",
+    "src/engine",
+    "src/analysis",
+    "src/score",
+    "src/audio",
+    "LICENSE",
+    "README.md",
+    "docs/ENGINE.md"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "typecheck": "tsc",
+    "typecheck": "tsc && tsc -p tsconfig.lib.json",
     "make-tracks": "node tools/make-test-tracks.mjs",
     "test": "node tools/join-test.mjs",
     "preview": "node tools/artifact.mjs",
@@ -19,5 +32,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.2"
   },
-  "engines": { "node": ">=22.12" }
+  "engines": {
+    "node": ">=22.12"
+  }
 }

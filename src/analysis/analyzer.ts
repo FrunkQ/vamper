@@ -1,4 +1,5 @@
-// Vendored from Gondryator (https://github.com/FrunkQ/gondryator, The Unlicense), unchanged.
+// Vendored from Gondryator (https://github.com/FrunkQ/gondryator, The Unlicense). One change: two unused
+// private fields removed, so the file compiles under stricter apps (see tsconfig.lib.json).
 // Progressive music analysis: audio -> score, front to back, in chunks.
 //
 // This is the "bands" engine: no neural stem separation. Drums are found from band-split
@@ -121,9 +122,7 @@ export class Analyzer {
   private sentBeats = 0; private sentSections = 0; private sentPhrases = 0; private sentTempo = 0; private sentMoments = 0;
   private sentEnv = 0;
   private eventId = 0;
-  private pendingEvents: ScoreEvent[] = [];
   private drumEnv = 0;
-  private envDrums: number[] = [];
   private startWall = 0;
   private opts: Required<AnalyzerOptions>;
   private k: Tuning;

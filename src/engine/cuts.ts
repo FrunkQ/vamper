@@ -95,7 +95,9 @@ export class Cutter {
 
   /** The segment from the beat at grid time `from` to the beat at `to` (null: the end of the song). */
   segment(from: number, to: number | null): Segment {
-    return { s: this.join(from), e: to === null ? this.mono.length : this.join(to), r: 1, from, to: to ?? undefined };
+    const seg: Segment = { s: this.join(from), e: to === null ? this.mono.length : this.join(to), r: 1, from };
+    if (to !== null) seg.to = to;
+    return seg;
   }
 
   /**
