@@ -8,6 +8,8 @@ song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) �
                                     └──> Cutter (cut points, fades) <───┘
                                                   │
                          Looper: cues, next/prev/goTo ──> Deck (Web Audio segments) ──> speakers
+                                    │
+           (optional) VoicePass: YAMNet (worker) ──> score.envelopes.voice ──> changes wait for a gap
 ```
 
 ## Files
@@ -18,11 +20,12 @@ song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) �
 | `src/engine/looper.ts` | **The one class an app needs.** `load(file)`, `cues`, `goTo(i)`, `next()`, `prev()`, `play()`, `stop()`, `loop(from, to)`, `release()`, `pause()`, `resume()`, `setVolume(gain, rampSec)`, `dispose()`, `state()`. Falls back to analysing on the main thread when a Worker can't be created. |
 | `src/engine/deck.ts` | Live playback: a chain of `AudioBufferSourceNode`s, each with a gain node for its crossfades, queued 2.5 s ahead on the AudioContext clock. Quantised changes (`change`), loops (`setLoop`), play on (`release`). |
 | `src/engine/cuts.ts` | Sample-level cuts, pure TypeScript: attack refinement, join fitting, the crossfade curve, the join score, and `render()` (the same chain, offline, for tests). |
-| `src/engine/plan.ts` | Musical decisions on the score: bar starts, the next beat/bar/phrase, the following section, section letters. |
+| `src/engine/plan.ts` | Musical decisions on the score: bar starts, the next beat/bar/phrase, the following section, section letters; the voice curve (`voiceAt`, `voiceAcross`) and the voice-aware next cut (`nextCut`). |
+| `src/analysis/voice.ts`, `voice.worker.ts` | The voice pass: YAMNet (via MediaPipe, WebAssembly) in a worker writes `score.envelopes.voice`, final up to `score.soundsFrontier`. Cut down from Gondryator's sound pass. The model files are `public/models/`. |
 | `src/main.ts`, `src/view.ts` | The editor page, a thin layer over `Looper`: canvas strip and waveform, buttons, keys, cue list (saved in `localStorage` by file hash). |
-| `src/analysis/*`, `src/score/*`, `src/audio/tags.ts` | Vendored from Gondryator, unchanged except the worker (no auto-tune) and the cache's database name. |
+| `src/analysis/*`, `src/score/*`, `src/audio/tags.ts` | Vendored from Gondryator, unchanged except the worker (no auto-tune), the cache's database name and the voice pass (above). |
 | `public/sw.js`, `public/manifest.webmanifest`, `public/icon*` | The installable app: manifest, icons, and a service worker that caches the page (network first) and the hashed build files (cache first) so it opens offline. Bump `CACHE` in `sw.js` if its caching rules change. |
-| `tools/join-test.mjs` | The headless join test (`npm test`). |
+| `tools/join-test.mjs` | The headless join test (`npm test`), and the voice-aware choice of bar on a made-up voice curve. |
 
 Using the engine elsewhere: install it from this repository, pinned to a commit, rather than copying files, so every fix arrives exactly:
 
@@ -40,7 +43,18 @@ looper.goTo(0); looper.goTo(1);                       // changes land on the nex
 looper.setVolume(0.8, 1.5); looper.pause(); looper.resume(); looper.dispose();
 ```
 
-The package is TypeScript source (`exports` points at `src/index.ts`); the app's bundler compiles it. With Vite, list it in `optimizeDeps.exclude` so the worker URL survives. No framework, no dependencies. The worker is loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand; elsewhere it quietly analyses on the main thread instead.
+**The voice pass is opt-in** for other apps, because it needs the model files served: copy Vamper's `public/models/` folder (it comes with the package, in `node_modules/vamper/public/models/`) (YAMNet, about 4 MB, and MediaPipe's WebAssembly runtime, about 7 MB) to your app's static files and pass its URL:
+
+```ts
+import { Looper, voiceModel } from 'vamper';
+const looper = new Looper({ voice: voiceModel(new URL('models/', document.baseURI).href) });
+looper.voice;            // { state: 'off' | 'loading' | 'running' | 'done' | 'failed', done, etaSec, why }
+looper.voiceWaitBars = 2; // how many extra bars a change may wait for a gap in the vocal (0: never)
+```
+
+`load()` still resolves when the song is playable; the voice pass carries on behind it (`onChange` fires as it goes) and saves its curve with the cached score. Without the option nothing changes, and the pass's worker (about 57 kB, it pulls in `@mediapipe/tasks-audio`, Vamper's one dependency) is never loaded.
+
+The package is TypeScript source (`exports` points at `src/index.ts`); the app's bundler compiles it. With Vite, list it in `optimizeDeps.exclude` so the worker URL survives. No framework; one dependency, `@mediapipe/tasks-audio`, used only by the optional voice pass. The worker is loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand; elsewhere it quietly analyses on the main thread instead.
 
 ## Segments and joins
 
@@ -53,6 +67,8 @@ Where a join goes:
 3. **Both cut points move together** (`fit`): the offset is chosen where the two sides of the crossfade differ least (smallest sum of squared differences), which picks either matching audio or a quiet spot. Moving both by the same amount keeps the groove exact.
 4. **The fade adapts to the material:** `fadeGains(x, r)` is equal power for unrelated audio (r = 0), equal gain for identical audio (r = 1, so a loop of identical bars doesn't bump), and boosted for partly cancelling audio (r down to -0.5).
 5. **Lengths come from the recording,** never from a tempo: a loop is the audio between two refined downbeats.
+
+**Voice.** With a voice curve, `Deck.change` asks `nextCut` (plan.ts) instead of `nextBoundary`: when the voice is above `VOICE_QUIET` (0.3) on both sides of the next quantise point (±0.3 s), it may wait up to `voiceWaitBars` (2) more bars for one that isn't, else takes the least-bad (a phrase start counts 0.2 better). `pending.forVoice` says it waited. Every `JoinLog` carries `voice`, the worse of `voiceAcross` at its two grid times (null where the pass hasn't listened). A loop's own wrap is where the cue says, so the editor flags a cue whose wrap cuts a vocal instead.
 
 The join score (`Cutter.score`) is the loudness step between what would have followed the cut and what follows instead, over 80 ms. For a loop's wrap, more than 3 dB is flagged as likely audible (a red mark under the waveform, ⚠ in the debug list). For a change of section a big step is just the music changing.
 
@@ -68,4 +84,4 @@ What it can't tell you: whether a join on real music is heard. That's Alex's lis
 
 ## Not yet
 
-Riffing (re-ordering bars, needs per-bar features exposed from `Analyzer.barFeature()`), an AudioWorklet deck, grid repair (shift downbeat, halve/double, drag a bar line), cue sheets as JSON files and in IndexedDB, a big-button live mode, playlists.
+Voice-aware snapping of cue ends when they are made; voice-aware loop wraps. Riffing (re-ordering bars, needs per-bar features exposed from `Analyzer.barFeature()`), an AudioWorklet deck, grid repair (shift downbeat, halve/double, drag a bar line), cue sheets as JSON files and in IndexedDB, a big-button live mode, playlists.

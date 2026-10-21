@@ -1,7 +1,8 @@
 // The editor page: a thin layer over the Looper (src/engine/looper.ts). Drop a song, select bars,
 // make cues, then orchestrate with Back / Next, number keys or by clicking the strip.
 import { Looper, type Cue } from './engine/looper';
-import { barStarts, snapToBar, type Quantise } from './engine/plan';
+import { barStarts, snapToBar, voiceAcross, VOICE_QUIET, type Quantise } from './engine/plan';
+import { voiceModel } from './analysis/voice';
 import { draw, stripHit, STRIP, type ViewState } from './view';
 
 declare const __BUILD__: string;
@@ -14,8 +15,10 @@ let installPrompt: any = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; $('install').hidden = false; });
 $('install').onclick = () => { installPrompt?.prompt(); installPrompt = null; $('install').hidden = true; };
 
-const looper = new Looper();
+// The voice pass's model and runtime are served from public/models/ (?novoice turns it off).
+const looper = new Looper(new URLSearchParams(location.search).has('novoice') ? {} : { voice: voiceModel(new URL('models/', document.baseURI).href) });
 const ui: ViewState = { selection: null };
+(window as any).__vamper = looper; // for headless checks and the console
 const canvas = $<HTMLCanvasElement>('view');
 let hash = '';
 
@@ -31,7 +34,7 @@ async function open(file: File) {
       p.stage === 'decode' ? 'Decoding the audio…' :
       p.stage === 'analyse' ? `Finding beats, bars and sections: ${Math.round(p.done * 100)}%${p.etaSec !== null ? `, about ${Math.ceil(p.etaSec)} s left` : ''}` :
       p.cached ? 'Opened from the cache.' : `Analysed in ${((performance.now() - t0) / 1000).toFixed(1)} s.`;
-    if (p.stage === 'done') setTimeout(() => { $('progress').hidden = true; }, 1500);
+    if (p.stage === 'done') setTimeout(() => { if (!listening()) $('progress').hidden = true; }, 1500);
   }).then(score => {
     const t = score.track;
     $('track').textContent = `${t.title}${t.artist ? ' · ' + t.artist : ''} · ${score.tempo.at(-1)?.bpm ?? '?'} bpm · ${score.beats.filter(b => b.downbeat).length} bars`;
@@ -43,6 +46,22 @@ $<HTMLInputElement>('file').onchange = e => { const f = (e.target as HTMLInputEl
 window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drag'); });
 window.addEventListener('dragleave', () => document.body.classList.remove('drag'));
 window.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drag'); const f = e.dataTransfer?.files[0]; if (f) void open(f); });
+
+// The voice pass runs after the analysis, while the song is already playable: same progress bar.
+const listening = () => looper.voice.state === 'loading' || looper.voice.state === 'running';
+let voiceShown = '';
+function showVoice() {
+  const v = looper.voice;
+  if (listening()) {
+    $('progress').hidden = false;
+    $('bar').style.width = `${Math.round(v.done * 100)}%`;
+    $('progress-text').textContent = `${v.state === 'loading' ? 'Loading the voice model' : 'Listening for singing and talking'}, so changes don't cut a line in half: ${Math.round(v.done * 100)}%${v.etaSec !== null ? `, about ${Math.ceil(v.etaSec)} s left` : ''}. You can play already.`;
+  } else if ((v.state === 'done' || v.state === 'failed') && voiceShown !== v.state) {
+    $('progress-text').textContent = v.state === 'done' ? 'Voices heard: changes now avoid cutting a sung line.' : `Couldn't listen for voices (${v.why}); changes land on the next bar as usual.`;
+    setTimeout(() => { if (!listening()) $('progress').hidden = true; }, v.state === 'done' ? 1500 : 5000);
+  }
+  voiceShown = v.state;
+}
 
 // ---- cues, saved per song in this browser ----
 
@@ -58,7 +77,9 @@ function renderCues() {
     el.className = 'cue' + (cur === i ? ' on' : '');
     const bars = barStarts(looper.score!);
     const b0 = bars.findIndex(t => Math.abs(t - c.from) < 0.01) + 1, b1 = bars.findIndex(t => Math.abs(t - c.to) < 0.01);
-    el.innerHTML = `<button data-go>${i + 1}</button><input value="${c.name.replace(/"/g, '&quot;')}" /><small>bars ${b0}–${b1 > 0 ? b1 : 'end'}</small><button data-mode>${c.mode === 'loop' ? '⟲ loop' : '→ once'}</button><button data-del>✕</button>`;
+    // A loop whose wrap splits a vocal line (at its end or its start) will be heard every pass.
+    const cuts = c.mode === 'loop' && Math.max(voiceAcross(looper.score!, c.from) ?? 0, voiceAcross(looper.score!, c.to) ?? 0) >= VOICE_QUIET;
+    el.innerHTML = `<button data-go>${i + 1}</button><input value="${c.name.replace(/"/g, '&quot;')}" /><small>bars ${b0}–${b1 > 0 ? b1 : 'end'}${cuts ? ' <span title="The loop wraps in the middle of a sung or spoken line">🎤 wrap cuts a vocal</span>' : ''}</small><button data-mode>${c.mode === 'loop' ? '⟲ loop' : '→ once'}</button><button data-del>✕</button>`;
     el.querySelector<HTMLButtonElement>('[data-go]')!.onclick = () => looper.goTo(i);
     el.querySelector('input')!.onchange = e => { c.name = (e.target as HTMLInputElement).value; saveCues(); };
     el.querySelector<HTMLButtonElement>('[data-mode]')!.onclick = () => { c.mode = c.mode === 'loop' ? 'once' : 'loop'; saveCues(); renderCues(); };
@@ -144,11 +165,14 @@ function frame() {
     let html = st.playing ? `Bar <b>${st.bar}</b>` : 'Stopped';
     if (cue) html += ` · ${looper.cues.length ? 'cue' : 'section'} <b>${cue.name}</b>`;
     if (st.loop) html += ' · looping';
-    if (st.pending) html += ` · next change: <b>${st.pending.label}</b> in ${st.pending.inSec.toFixed(1)} s`;
+    if (st.pending) html += ` · next change: <b>${st.pending.label}</b> in ${st.pending.inSec.toFixed(1)} s${st.pending.forVoice ? ' (waiting for a gap in the vocal)' : ''}`;
     $('readout').innerHTML = html;
-    $('joins').textContent = st.joins.map(j => `${j.kind.padEnd(6)} ${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s   step ${j.score.db} dB   match ${j.score.r}${j.kind === 'loop' && j.score.warn ? '   ⚠ may be audible' : ''}`).reverse().join('\n') || 'No joins yet.';
+    const vs = looper.voice.state;
+    $('joins').textContent = (vs === 'off' ? '' : `voice pass: ${vs}${looper.voice.why ? ' (' + looper.voice.why + ')' : ''}, waits up to ${looper.voiceWaitBars} bars for a gap\n`) +
+      (st.joins.map(j => `${j.kind.padEnd(6)} ${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s   step ${j.score.db} dB   match ${j.score.r}   voice ${j.voice === null ? '?' : j.voice.toFixed(2)}${j.kind === 'loop' && j.score.warn ? '   ⚠ may be audible' : ''}${j.voice !== null && j.voice >= VOICE_QUIET ? '   🎤 cuts a vocal' : ''}`).reverse().join('\n') || 'No joins yet.');
   }
-  if (st.cue !== lastCue) { lastCue = st.cue; renderCues(); }
+  if (st.cue !== lastCue || looper.voice.state !== voiceShown) { lastCue = st.cue; renderCues(); }
+  showVoice();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

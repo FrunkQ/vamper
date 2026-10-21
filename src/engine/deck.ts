@@ -3,7 +3,7 @@
 // the next segment queued a couple of seconds ahead. Milestone 1 uses chained buffer sources; an
 // AudioWorklet "tape deck" can replace this file later without changing cuts.ts or plan.ts.
 import { Cutter, fadeCurve, type JoinScore, type Segment } from './cuts';
-import { nextBoundary, type Quantise } from './plan';
+import { nextCut, voiceAcross, type Quantise } from './plan';
 import type { Score } from '../score/types';
 
 /** Queue the next segment when the current one has this long left (more than a background tab's 1 s timer). */
@@ -23,8 +23,12 @@ interface Voice {
   fadeOutAt: number | null;
 }
 
-/** A join that has been scheduled, for the debug readout: a loop wrapping, or a change of passage. */
-export interface JoinLog { kind: 'loop' | 'change'; from: number; to: number; score: JoinScore }
+/**
+ * A join that has been scheduled, for the debug readout: a loop wrapping, or a change of passage.
+ * `voice` is how likely it splits a sung or spoken line (0..1, the worse of its two sides; null
+ * until the voice pass has listened there).
+ */
+export interface JoinLog { kind: 'loop' | 'change'; from: number; to: number; score: JoinScore; voice: number | null }
 
 export class Deck {
   readonly ctx = new AudioContext({ latencyHint: 'interactive' });
@@ -36,8 +40,10 @@ export class Deck {
   /** The passage being looped, as grid times [first downbeat, downbeat after the last bar], or null to play on. */
   loop: [number, number] | null = null;
   quantise: Quantise = 'bar';
-  /** A change waiting to land: when (context time), where (song time) and what. */
-  pending: { when: number; at: number; label: string } | null = null;
+  /** How many bars past the quantise point a change may wait for a gap in the vocal (0: never wait). Needs the voice curve. */
+  voiceWaitBars = 2;
+  /** A change waiting to land: when (context time), where (song time) and what; forVoice when it waits later than the quantise point so as not to cut a vocal line. */
+  pending: { when: number; at: number; label: string; forVoice: boolean } | null = null;
   joins: JoinLog[] = [];
   onChange: (() => void) | null = null;
 
@@ -142,14 +148,16 @@ export class Deck {
     const v = this.dropFuture();
     const soonest = this.ctx.currentTime + MARGIN + c.xfade / sr;
     const p = (v.seg.s + Math.max(0, soonest - v.when) * sr) / sr;
-    const b = nextBoundary(this.score!, p, this.quantise === 'loop' && !this.loop ? 'bar' : this.quantise, v.seg.e / sr);
+    const cut = nextCut(this.score!, p, this.quantise === 'loop' && !this.loop ? 'bar' : this.quantise, v.seg.e / sr, this.voiceWaitBars);
+    const b = cut?.at ?? null;
     // Land on that boundary, or at the end of this pass when there is none (or it is too close).
-    if (b !== null && this.timeOf(v, c.join(b)) - SLACK > this.ctx.currentTime + MARGIN) this.setEnd(v, c.join(b), b);
+    let forVoice = false;
+    if (b !== null && this.timeOf(v, c.join(b)) - SLACK > this.ctx.currentTime + MARGIN) { this.setEnd(v, c.join(b), b); forVoice = !!cut?.held; }
     else if (v.seg.e >= this.buffer!.length) return null;
     this.loop = loop;
     this.link(v, c.segment(target, loop ? loop[1] : null), 'change');
     const at = v.seg.e / sr;
-    this.pending = { when: this.timeOf(v, v.seg.e), at, label };
+    this.pending = { when: this.timeOf(v, v.seg.e), at, label, forVoice };
     this.onChange?.();
     return at;
   }
@@ -190,7 +198,7 @@ export class Deck {
   /** Queue `seg` to crossfade in as `v` reaches its end (the cut points are fitted first). */
   private link(v: Voice, seg: Segment, kind: 'loop' | 'change' | 'on') {
     const sr = this.buffer!.sampleRate, X = this.cutter!.xfade, n = Math.max(2, X);
-    const e0 = v.seg.e;
+    const e0 = v.seg.e, out = v.seg.to, into = seg.from;
     this.cutter!.fit(v.seg, seg);
     if (v.seg.e !== e0) v.src.stop(this.timeOf(v, v.seg.e));
     const when = this.timeOf(v, v.seg.e - X);
@@ -198,8 +206,14 @@ export class Deck {
     v.fadeOutAt = when;
     const next = this.startVoice(seg, when);
     next.gain.gain.setValueCurveAtTime(fadeCurve(n, 'in', seg.r), when, X / sr);
-    if (kind !== 'on') this.joins.push({ kind, from: v.seg.e / sr, to: (seg.s + X) / sr, score: this.cutter!.score(v.seg.e, seg.s + X) });
+    if (kind !== 'on') this.joins.push({ kind, from: v.seg.e / sr, to: (seg.s + X) / sr, score: this.cutter!.score(v.seg.e, seg.s + X), voice: this.voiceOf(out, into) });
     if (this.joins.length > 50) this.joins.shift();
+  }
+
+  /** How likely a join from grid time `out` to grid time `into` splits a vocal line: the worse side. */
+  private voiceOf(out: number | undefined, into: number | undefined): number | null {
+    const vs = [out, into].map(t => (t === undefined ? null : voiceAcross(this.score!, t))).filter((v): v is number => v !== null);
+    return vs.length ? Math.max(...vs) : null;
   }
 
   /** Cancel queued segments that have not started yet; returns the one that will be playing. */

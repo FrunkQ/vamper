@@ -8,7 +8,7 @@ In film and game scoring, *vamping* is holding a phrase until the action moves o
 
 ## Use it
 
-1. Drop a song on the page (MP3, WAV, FLAC, OGG, M4A). It is analysed in a few seconds and remembered for next time.
+1. Drop a song on the page (MP3, WAV, FLAC, OGG, M4A). It is analysed in a few seconds and remembered for next time. Then it listens for singing and talking (a few seconds, while you can already play), so a change waits a bar or two rather than cut a sung line in half.
 2. Until you make cues, every section is a cue. To make your own, drag across the waveform to select bars and press **+ Cue** (or `C`). Each cue loops until you move on, or plays **once** and carries on.
 3. Play with `Space`, step with `←` `→`, jump with `1`-`9`, or click a block on the strip. The readout says when the change will land.
 
@@ -27,7 +27,7 @@ The site is static files in `dist/`; `wrangler.jsonc` tells Cloudflare to serve 
 
 Public domain under [The Unlicense](LICENSE).
 
-The music analysis (beats, bars, phrases, sections, moments), the score cache and the tag reader are vendored from [Gondryator](https://github.com/FrunkQ/gondryator) (The Unlicense), with thanks. The YIN pitch detector inside it is from A. de Cheveigné and H. Kawahara, "YIN, a fundamental frequency estimator for speech and music", JASA 2002. The idea of jumping between similar parts of a song owes a lot to Paul Lamere's Infinite Jukebox.
+The music analysis (beats, bars, phrases, sections, moments), the score cache and the tag reader are vendored from [Gondryator](https://github.com/FrunkQ/gondryator) (The Unlicense), with thanks. The YIN pitch detector inside it is from A. de Cheveigné and H. Kawahara, "YIN, a fundamental frequency estimator for speech and music", JASA 2002. The voice pass, which keeps changes from cutting a sung line, is cut down from the Gondryator's sound pass and runs Google's [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) sound classifier (trained model, `public/models/yamnet/`) with [MediaPipe Tasks Audio](https://github.com/google-ai-edge/mediapipe) (`@mediapipe/tasks-audio`, its WebAssembly runtime in `public/models/mediapipe/`), both © Google LLC under the Apache License 2.0 ([full text](licenses/Apache-2.0.txt)). The idea of jumping between similar parts of a song owes a lot to Paul Lamere's Infinite Jukebox.
 
 **Have fun with this tech:** the same analyser drives [the Gondryator](https://gondryator.starsystemx.com/), which turns any song into a ride where the world keeps time with the music.
 

@@ -25,7 +25,9 @@ Everything runs in your browser: no server hears your music, nothing is uploaded
 
 ## Are there AI models in it?
 
-No. There is **no neural network and no trained model** anywhere in Vamper. The analysis is classic signal processing (Fourier transforms, filters, pitch detection, dynamic programming), written in plain TypeScript. That is why it starts instantly, runs many times faster than real time on any machine, and gives the same answer every time for the same file.
+One small one, and only for one job. The beats, bars, phrases and sections come from classic signal processing (Fourier transforms, filters, pitch detection, dynamic programming), written in plain TypeScript, with **no neural network**. That is why it starts instantly, runs many times faster than real time on any machine, and gives the same answer every time for the same file.
+
+The exception is the **voice pass** (see [Listening for voices](#listening-for-voices)): Google's YAMNet, a sound classifier, listens for singing and talking so that a change doesn't cut a sung line in half. It runs in your browser too, after the main analysis, and the song plays while it listens.
 
 The analyser comes from the [Gondryator](https://github.com/FrunkQ/gondryator), a music visualiser by the same author, which needed the same thing: a song turned into a timed score, ahead of playback. Have fun with this tech: [try the Gondryator](https://gondryator.starsystemx.com/), where any song becomes a ride and the world outside the window keeps time with the music.
 
@@ -37,6 +39,7 @@ sequenceDiagram
     participant Page as Page (main.ts)
     participant L as Looper
     participant W as Analyser (worker)
+    participant V as Voice pass (worker)
     participant DB as Score cache
 
     You->>Page: drop a song
@@ -53,6 +56,14 @@ sequenceDiagram
             L-->>Page: redraw; progress and time left
         end
         L->>DB: save the score
+    end
+    opt voice curve not cached yet
+        L->>V: listen for singing and talking (YAMNet)
+        loop every 6 s of audio
+            V-->>L: voice curve so far
+            L-->>Page: redraw; progress and time left
+        end
+        L->>DB: save the score with its voice curve
     end
     You->>Page: Play, Next, Back, click a section
     Page->>L: goTo(cue)
@@ -101,6 +112,30 @@ flowchart TB
 
 **How accurate is it?** It is accurate to the slice, about 11.6 ms. That is good enough to know where a bar is, but not good enough to cut audio: a cut 10 ms early or late is a stumble you can hear. On the synthetic test tracks the bar lines are off by up to 13 ms. That is why Vamper refines every cut against the audio itself (see [Blending](#blending-how-a-join-is-made)).
 
+## Listening for voices
+
+A bar line is a fine place to cut a drum loop, but not the middle of a word. Singers phrase across bar lines all the time, so a change that lands on the next bar can chop a sung line in half. Vamper listens for voices so it can avoid that.
+
+```mermaid
+flowchart LR
+    A[Song, mono] --> R[Resample to 16 kHz<br/>the browser's own resampler]
+    R --> Y[YAMNet in WebAssembly<br/>a background worker]
+    Y --> C[For each ~1 s window:<br/>the strongest of its speech,<br/>shouting and singing classes]
+    C --> V[📈 Voice curve, 0..1<br/>saved with the score]
+    V --> N[Changes wait for a gap]
+    V --> J[Joins and loops are<br/>flagged when they cut a line]
+```
+
+**What it is.** [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) is a small neural network from Google that recognises 521 kinds of sound (AudioSet's classes). Google's MediaPipe runs it in WebAssembly. Vamper keeps only its human-voice classes (speech, conversation, narration, shouting, singing, choir, rapping, humming...) and writes down, for each window of about a second, how sure it is that someone is singing or talking: the **voice curve**. It is the Gondryator's sound pass, cut down to just this curve.
+
+**What it costs.** The model and its runtime are about 11 MB, fetched from the site the first time and then kept by the installed app, so it works offline. Listening is far faster than real time: on a laptop, a second or so to load the model (longer the first time, while it downloads) and then roughly 50 to 200 times real time, so a few seconds at most for a four-minute song. It starts **after** the main analysis and never holds anything up: the song is playable already, the progress bar says how long is left, and until the curve reaches a bar line changes there behave as they always did. The curve is saved with the score, so a song is only listened to once.
+
+**How it changes a cut.** A cut at a bar line counts as splitting a line when the voice curve is above 0.3 on **both** sides of it (0.3 s before and after), so a line that ends just before the bar, or starts on it, is fine. When the next quantise point would split a line, the change may wait **up to two more bars** for one that doesn't. If every bar line in reach splits a line, it takes the least-bad one, counting a phrase start as a little better (a new vocal line usually starts on one). The readout says "(waiting for a gap in the vocal)" when that happens.
+
+**What it shows.** The voice curve is drawn in pink along the bottom of the waveform, so you can see why a change waited. Every join in **Joins (debug)** lists its `voice` (the worse of its two sides; `?` until the pass has listened there), with 🎤 when it cuts a vocal, and a pink mark under the waveform. A loop cue whose wrap splits a line says "🎤 wrap cuts a vocal" in the cue list, because that will be heard on every pass: move its ends by a bar.
+
+What it can't do: it hears *a voice*, not words, so it can't find the end of a sentence, and a breath between two words inside one window looks like singing throughout. With windows of about a second, it is a guide for which bar to cut at, not for where inside the bar. On instrumental music it hears nothing, and changes land exactly as before.
+
 ## Cues: what the music should do
 
 A **cue** is a passage the music can sit in: a name, a start bar, an end bar, and a mode.
@@ -123,7 +158,7 @@ Pressing a button never cuts the music immediately. It asks for a change at the 
 | next phrase | the start of the next 4-bar phrase |
 | end of loop pass | when the current loop reaches its end |
 
-The soonest a change can land is 120 ms after the press, which leaves time to schedule the audio precisely. The readout shows the countdown ("next change: Combat in 1.4 s"), and a yellow line on the waveform marks where it will land.
+The soonest a change can land is 120 ms after the press, which leaves time to schedule the audio precisely. On a song with vocals it may wait up to two more bars rather than cut a sung line (see [Listening for voices](#listening-for-voices)). The readout shows the countdown ("next change: Combat in 1.4 s"), and a yellow line on the waveform marks where it will land.
 
 ```mermaid
 stateDiagram-v2
@@ -198,7 +233,7 @@ flowchart LR
     M --> C3[Groove: the bar across the join<br/>matches the source within 3 ms]
 ```
 
-All 12 joins pass. The test does catch real mistakes: when a cut was deliberately moved by 4.5 ms, every join failed the groove check. It can't tell you how a join on a real song sounds. For that, listen and report the times from the **Joins (debug)** list ("change at 20.318 s clicks").
+All 12 joins pass. It also checks the voice-aware choice of bar on a made-up voice curve: a line across the next two bar lines makes a change wait for the third, no voice means no wait, and waiting can be turned off. The test does catch real mistakes: when a cut was deliberately moved by 4.5 ms, every join failed the groove check. It can't tell you how a join on a real song sounds. For that, listen and report the times from the **Joins (debug)** list ("change at 20.318 s clicks").
 
 ## The installable app
 
