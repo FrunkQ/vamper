@@ -1,6 +1,6 @@
 # Notes for agents
 
-Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until the action moves on). The game master marks passages (cues) in a local song; in play they step forward and back and the music changes at the next bar with an inaudible join. Read `docs/ENGINE.md` first; it maps every file.
+Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until the action moves on). The game master marks passages (cues) in a local song; in play they step forward and back and the music changes at the next bar with an inaudible join. Read `docs/TECHNOLOGY.md` for the plain-English tour, then `docs/ENGINE.md`, which maps every file. Keep both accurate when the code changes.
 
 ## How Alex likes to work
 

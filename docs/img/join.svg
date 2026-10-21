@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="system-ui, sans-serif" font-size="13">
+  <rect width="760" height="330" fill="#ffffff"/>
+  <!-- outgoing side -->
+  <text x="20" y="34" fill="#1d2026" font-weight="600">Outgoing segment (end of loop pass, bar 13)</text>
+  <path d="M20 90 C 60 70, 90 110, 130 90 S 200 70, 240 92 S 300 105, 330 95" fill="none" stroke="#4e79a7" stroke-width="2"/>
+  <path d="M330 95 C 350 92, 370 98, 390 95" fill="none" stroke="#4e79a7" stroke-width="2"/>
+  <path d="M390 95 C 400 94, 405 96, 410 95" fill="none" stroke="#4e79a7" stroke-width="2" stroke-dasharray="3 3"/>
+  <path d="M440 95 l6 -45 l6 80 l6 -60 l6 40 l6 -22 l8 10" fill="none" stroke="#4e79a7" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.5"/>
+  <text x="430" y="40" fill="#8a909c">its own hit (not played)</text>
+  <!-- incoming side -->
+  <text x="20" y="168" fill="#1d2026" font-weight="600">Incoming segment (start of the loop, bar 9)</text>
+  <path d="M310 225 C 330 222, 350 228, 370 224 S 400 226, 410 225" fill="none" stroke="#e15759" stroke-width="2" stroke-dasharray="3 3" opacity="0.6"/>
+  <path d="M330 225 C 350 222, 370 228, 390 225 S 405 226, 410 225" fill="none" stroke="#e15759" stroke-width="2"/>
+  <path d="M440 225 l6 -45 l6 80 l6 -60 l6 40 l6 -22 l8 10 C 480 225, 520 210, 560 226 S 650 240, 740 222" fill="none" stroke="#e15759" stroke-width="2"/>
+  <path d="M410 225 L440 225" fill="none" stroke="#e15759" stroke-width="2"/>
+  <!-- crossfade band -->
+  <rect x="330" y="55" width="80" height="200" fill="#f0b429" opacity="0.18"/>
+  <text x="333" y="272" fill="#8a6200">crossfade</text>
+  <text x="333" y="287" fill="#8a6200">20 ms</text>
+  <!-- gain curves -->
+  <path d="M330 120 Q 380 120, 410 140" fill="none" stroke="#4e79a7" stroke-width="2.5"/>
+  <text x="250" y="128" fill="#4e79a7" font-size="11">fades out</text>
+  <path d="M330 255 Q 360 235, 410 235" fill="none" stroke="#e15759" stroke-width="2.5"/>
+  <text x="262" y="252" fill="#e15759" font-size="11">fades in</text>
+  <!-- join line and attack line -->
+  <line x1="410" y1="50" x2="410" y2="300" stroke="#1d2026" stroke-width="2"/>
+  <text x="380" y="318" fill="#1d2026" font-weight="600">join</text>
+  <line x1="440" y1="50" x2="440" y2="300" stroke="#59a14f" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="446" y="318" fill="#2f7a2a">refined attack (the downbeat's real hit)</text>
+  <path d="M412 300 L438 300" stroke="#1d2026" stroke-width="1" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text x="414" y="294" fill="#1d2026" font-size="11">3-20 ms</text>
+  <defs><marker id="a" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L6 3 L0 6 z" fill="#1d2026"/></marker></defs>
+  <text x="500" y="125" fill="#1d2026">The hit plays whole on the</text>
+  <text x="500" y="142" fill="#1d2026">new side, so it masks the join.</text>
+</svg>

@@ -27,3 +27,5 @@ button:disabled { opacity: .4; cursor: default; }
 pre { font-size: 12px; color: var(--dim); max-height: 200px; overflow: auto; }
 .help { color: var(--dim); font-size: 13px; }
 body.drag { outline: 3px dashed var(--accent); outline-offset: -6px; }
+.fun { color: var(--dim); font-size: 13px; }
+.fun a { color: var(--accent); }

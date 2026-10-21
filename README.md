@@ -29,4 +29,6 @@ Public domain under [The Unlicense](LICENSE).
 
 The music analysis (beats, bars, phrases, sections, moments), the score cache and the tag reader are vendored from [Gondryator](https://github.com/FrunkQ/gondryator) (The Unlicense), with thanks. The YIN pitch detector inside it is from A. de Cheveigné and H. Kawahara, "YIN, a fundamental frequency estimator for speech and music", JASA 2002. The idea of jumping between similar parts of a song owes a lot to Paul Lamere's Infinite Jukebox.
 
-Technical notes are in [docs/ENGINE.md](docs/ENGINE.md); notes for coding agents in [AGENTS.md](AGENTS.md).
+**Have fun with this tech:** the same analyser drives [the Gondryator](https://gondryator.starsystemx.com/), which turns any song into a ride where the world keeps time with the music.
+
+How it all works, in plain English with diagrams: [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md). File-by-file reference: [docs/ENGINE.md](docs/ENGINE.md); notes for coding agents in [AGENTS.md](AGENTS.md).

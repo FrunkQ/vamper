@@ -1,4 +1,6 @@
-# How the looper works
+# Engine reference
+
+The plain-English tour with diagrams is [TECHNOLOGY.md](TECHNOLOGY.md); this page maps the files.
 
 ```
 song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) ──> Score (beats, bars, phrases, sections)
