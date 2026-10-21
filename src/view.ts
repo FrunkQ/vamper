@@ -1,7 +1,7 @@
 // The editor's one picture: the section strip and cue strip on top, the waveform with the bar
 // grid below, and the playhead, loop and pending change drawn over it. Plain canvas 2D.
 import type { Looper } from './engine/looper';
-import { sectionNames } from './engine/plan';
+import { sectionNames, voiceAt, VOICE_QUIET } from './engine/plan';
 
 export const STRIP = 24; // height of each strip row
 const WAVE_TOP = STRIP * 2 + 6;
@@ -70,6 +70,18 @@ export function draw(canvas: HTMLCanvasElement, looper: Looper, ui: ViewState) {
     g.fillRect(Math.round(X(p.t)), WAVE_TOP, 2, 8);
   }
 
+  // The voice curve, lightly along the bottom: pink where someone is singing or talking (from the
+  // voice pass), so it is easy to see why a change waited or a loop's wrap is flagged.
+  if (score.envelopes.voice) {
+    const vh = Math.min(40, (h - WAVE_TOP) / 4);
+    for (let x = 0; x < w; x++) {
+      const v = voiceAt(score, (x / w) * dur);
+      if (!v || v < 0.1) continue;
+      g.fillStyle = v >= VOICE_QUIET ? 'rgba(236,112,198,0.45)' : 'rgba(236,112,198,0.2)';
+      g.fillRect(x, h - v * vh, 1, v * vh);
+    }
+  }
+
   // Section strip.
   const names = sectionNames(score);
   score.sections.forEach((s, i) => {
@@ -86,7 +98,10 @@ export function draw(canvas: HTMLCanvasElement, looper: Looper, ui: ViewState) {
     g.strokeRect(X(st.loop[0]) + 1, WAVE_TOP + 1, X(st.loop[1]) - X(st.loop[0]) - 2, h - WAVE_TOP - 2);
   }
   if (st.pending) { g.fillStyle = '#f0b429'; g.fillRect(X(st.pending.at) - 1, WAVE_TOP, 3, h - WAVE_TOP); }
-  for (const j of st.joins) if (j.kind === 'loop' && j.score.warn) { g.fillStyle = '#e15759'; g.fillRect(X(j.from) - 2, h - 8, 4, 8); }
+  for (const j of st.joins) {
+    if (j.kind === 'loop' && j.score.warn) { g.fillStyle = '#e15759'; g.fillRect(X(j.from) - 2, h - 8, 4, 8); }
+    if (j.voice !== null && j.voice >= VOICE_QUIET) { g.fillStyle = '#ec70c6'; g.fillRect(X(j.from) - 2, h - 16, 4, 6); }
+  }
   if (st.playing) { g.fillStyle = '#fff'; g.fillRect(Math.round(X(st.position)), WAVE_TOP - 4, 2, h - WAVE_TOP + 4); }
 }
 

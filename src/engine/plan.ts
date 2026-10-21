@@ -66,3 +66,46 @@ export function sectionNames(score: Score): string[] {
     return letter.get(sec.group)!;
   });
 }
+
+/** Below this (0..1) the voice pass hears nobody singing or talking. */
+export const VOICE_QUIET = 0.3;
+
+/** How sure the voice pass is that someone is singing or talking at t (0..1), or null where it hasn't listened (yet). */
+export function voiceAt(score: Score, t: number): number | null {
+  const v = score.envelopes.voice;
+  if (!v || t < 0 || t >= (score.soundsFrontier ?? 0)) return null;
+  return v.values[Math.min(v.values.length - 1, Math.floor(t * v.rate))] ?? null;
+}
+
+/**
+ * How likely a cut at t splits a sung or spoken line: the voice on both sides of it (the smaller,
+ * so a line that ends just before the bar, or starts on it, doesn't count). Null when unknown.
+ */
+export function voiceAcross(score: Score, t: number): number | null {
+  const a = voiceAt(score, t - 0.3), b = voiceAt(score, t + 0.3);
+  return a === null || b === null ? null : Math.min(a, b);
+}
+
+/**
+ * Like nextBoundary, but it may wait up to `waitBars` more bars for a cut that doesn't split a
+ * vocal line: the first boundary in that window with no voice across it, or else the one with the
+ * least (a phrase start counts as 0.2 less, since a new vocal line usually starts there).
+ * `held` is true when it chose a later boundary than nextBoundary would have.
+ */
+export function nextCut(score: Score, t: number, q: Quantise, before = Infinity, waitBars = 2): { at: number; voice: number | null; held: boolean } | null {
+  const first = nextBoundary(score, t, q, before);
+  if (first === null) return null;
+  const v0 = voiceAcross(score, first);
+  if (waitBars <= 0 || v0 === null || v0 < VOICE_QUIET || q === 'loop') return { at: first, voice: v0, held: false };
+  const bars = barStarts(score), k = bars.findIndex(b => b > first + 1e-6);
+  const limit = Math.min(before, bars[k + waitBars - 1] ?? Infinity);
+  const phrase = new Set(score.phrases.map(p => p.t));
+  let best = { at: first, voice: v0 as number | null, cost: v0 - (phrase.has(first) ? 0.2 : 0) };
+  for (let x = nextBoundary(score, first, q, before); x !== null && x <= limit + 1e-6; x = nextBoundary(score, x, q, before)) {
+    const v = voiceAcross(score, x);
+    if (v === null || v < VOICE_QUIET) return { at: x, voice: v, held: true };
+    const cost = v - (phrase.has(x) ? 0.2 : 0);
+    if (cost < best.cost - 0.05) best = { at: x, voice: v, cost };
+  }
+  return { at: best.at, voice: best.voice, held: best.at !== first };
+}

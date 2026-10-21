@@ -17,6 +17,7 @@ Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until 
 - Cut, fade and fit code lives only in `src/engine/cuts.ts`, so the deck and the join test can't drift apart. If you change how a join is made, `npm test` must still pass, and add a case if you found a new way to fail.
 - Never assume a fixed tempo: lengths come from refined downbeats of the recording.
 - The vendored analyser (`src/analysis`, `src/score/types.ts`) is unchanged from Gondryator commit 2f0fa70, except two unused fields removed from `analyzer.ts`. If you change it, say so at the top of the file, and bump `ENGINE_KEY` in `src/score/cache.ts` when the score changes.
+- The voice pass (`src/analysis/voice.ts`, cut down from Gondryator's sound pass) is the only neural model, and it is optional: `new Looper({ voice })` turns it on, the app does, other apps must serve `public/models/` to use it. It runs after the fast analysis and never blocks playing; keep it that way. `@mediapipe/tasks-audio` is pinned exactly because its WebAssembly files in `public/models/mediapipe/` must match it: update both together. Voice decisions live in `plan.ts` (`voiceAcross`, `nextCut`), so the join test can check them. `?novoice` turns the pass off in the app; `window.__vamper` is the page's Looper, for headless checks.
 
 ## Deploy
 

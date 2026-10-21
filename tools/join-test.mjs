@@ -13,7 +13,7 @@ import { buildSync } from 'esbuild';
 
 fs.mkdirSync('.cache', { recursive: true });
 buildSync({ stdin: { contents: "export * from './src/analysis/analyzer'; export * from './src/engine/cuts'; export * from './src/engine/plan';", resolveDir: '.', loader: 'ts' }, bundle: true, format: 'esm', platform: 'node', outfile: '.cache/engine.mjs', logLevel: 'error' });
-const { Analyzer, Cutter, render, barStarts, followingSection } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
+const { Analyzer, Cutter, render, barStarts, followingSection, nextCut } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
 
 const TRACKS = ['test-124', 'test-100', 'test-120'];
 if (TRACKS.some(t => !fs.existsSync(`test-tracks/${t}.wav`))) execFileSync('node', ['tools/make-test-tracks.mjs'], { stdio: 'inherit' });
@@ -90,5 +90,32 @@ for (const name of TRACKS) {
     console.log(`  join ${k} at ${(j / sr).toFixed(3)} s: jump ${jump.toFixed(3)}, level off by ${worst.toFixed(1)} dB, bar ${groove.toFixed(1)} ms off, score ${sc.db} dB / r ${sc.r}  ${ok ? 'ok' : 'FAIL'}`);
   }
 }
-console.log(failures ? `\n${failures} join(s) failed` : '\nall joins ok');
+// Voice-aware changes (plan.ts nextCut), on a made-up voice curve over the last track: a sung line
+// across the next two bar lines makes a change wait for the third; with no voice it doesn't wait;
+// a line across every bar in reach falls back to the least-bad one (a phrase start if there is one).
+{
+  const name = TRACKS.at(-1), { x, sr } = readWav(`test-tracks/${name}.wav`), a = new Analyzer(x, sr, { chunkSec: 4 });
+  const score = { beats: [], sections: [], phrases: [], envelopes: {}, soundsFrontier: x.length / sr };
+  while (!a.finished) { const d = a.step(); if (d) for (const k of ['beats', 'sections', 'phrases']) score[k].push(...d[k]); }
+  const bars = barStarts(score), rate = 1 / 0.975, n = Math.ceil((x.length / sr) * rate);
+  const curve = (sung) => { score.envelopes.voice = { rate, values: Array.from({ length: n }, (_, i) => (sung((i + 0.5) / rate) ? 0.8 : 0.02)) }; };
+  const k = bars.findIndex(t => t > 10), t0 = bars[k] - 0.5;
+  const checks = [];
+  curve(() => false);
+  checks.push(['no voice: next bar', nextCut(score, t0, 'bar'), bars[k], false]);
+  curve(t => t > bars[k] - 1 && t < bars[k + 1] + 1);
+  checks.push(['line across two bar lines: waits for the third', nextCut(score, t0, 'bar'), bars[k + 2], true]);
+  checks.push(['waiting off: next bar', nextCut(score, t0, 'bar', Infinity, 0), bars[k], false]);
+  curve(() => true);
+  const ph = score.phrases.map(p => p.t).find(t => t > bars[k] + 0.01 && t <= bars[k + 2] + 0.01);
+  checks.push(['voice everywhere: least bad', nextCut(score, t0, 'bar'), ph ?? bars[k], ph !== undefined]);
+  console.log(`\nvoice-aware changes on ${name} (from ${t0.toFixed(2)} s):`);
+  for (const [what, got, at, held] of checks) {
+    const ok = got && Math.abs(got.at - at) < 1e-6 && got.held === held;
+    if (!ok) failures++;
+    console.log(`  ${what}: ${got ? got.at.toFixed(3) + ' s' + (got.held ? ' (held)' : '') : 'none'}  ${ok ? 'ok' : 'FAIL (want ' + at.toFixed(3) + ' s)'}`);
+  }
+}
+
+console.log(failures ? `\n${failures} check(s) failed` : '\nall joins ok');
 process.exit(failures ? 1 : 0);

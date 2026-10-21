@@ -16,7 +16,9 @@
     "src/audio",
     "LICENSE",
     "README.md",
-    "docs/ENGINE.md"
+    "docs/ENGINE.md",
+    "public/models",
+    "licenses"
   ],
   "scripts": {
     "dev": "vite",
@@ -34,5 +36,8 @@
   },
   "engines": {
     "node": ">=22.12"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-audio": "1.0.1"
   }
 }
