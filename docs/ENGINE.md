@@ -14,7 +14,8 @@ song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) �
 
 | File | What it does |
 |---|---|
-| `src/engine/looper.ts` | **The one class an app needs.** `load(file)`, `cues`, `goTo(i)`, `next()`, `prev()`, `play()`, `stop()`, `loop(from, to)`, `release()`, `state()`. Falls back to analysing on the main thread when a Worker can't be created. |
+| `src/index.ts` | The package entry: everything another app may import. |
+| `src/engine/looper.ts` | **The one class an app needs.** `load(file)`, `cues`, `goTo(i)`, `next()`, `prev()`, `play()`, `stop()`, `loop(from, to)`, `release()`, `pause()`, `resume()`, `setVolume(gain, rampSec)`, `dispose()`, `state()`. Falls back to analysing on the main thread when a Worker can't be created. |
 | `src/engine/deck.ts` | Live playback: a chain of `AudioBufferSourceNode`s, each with a gain node for its crossfades, queued 2.5 s ahead on the AudioContext clock. Quantised changes (`change`), loops (`setLoop`), play on (`release`). |
 | `src/engine/cuts.ts` | Sample-level cuts, pure TypeScript: attack refinement, join fitting, the crossfade curve, the join score, and `render()` (the same chain, offline, for tests). |
 | `src/engine/plan.ts` | Musical decisions on the score: bar starts, the next beat/bar/phrase, the following section, section letters. |
@@ -23,7 +24,23 @@ song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) �
 | `public/sw.js`, `public/manifest.webmanifest`, `public/icon*` | The installable app: manifest, icons, and a service worker that caches the page (network first) and the hashed build files (cache first) so it opens offline. Bump `CACHE` in `sw.js` if its caching rules change. |
 | `tools/join-test.mjs` | The headless join test (`npm test`). |
 
-Using the engine elsewhere: copy `src/engine`, `src/analysis`, `src/score` and `src/audio/tags.ts`. No framework, no dependencies. The worker is loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand; elsewhere it quietly analyses on the main thread instead.
+Using the engine elsewhere: install it from this repository, pinned to a commit, rather than copying files, so every fix arrives exactly:
+
+```
+npm install github:FrunkQ/vamper#<commit>
+```
+
+```ts
+import { Looper, barSpan } from 'vamper';
+const looper = new Looper();
+await looper.load(file, p => showProgress(p));        // a File (wrap a Blob with new File([blob], name))
+const [from, to] = barSpan(looper.score!, 0, 30);       // rough seconds to whole bars
+looper.cues = [{ name: 'Calm', from, to, mode: 'loop' }, { name: 'Fight', from: 95, to: 0, mode: 'once' }];
+looper.goTo(0); looper.goTo(1);                       // changes land on the next bar
+looper.setVolume(0.8, 1.5); looper.pause(); looper.resume(); looper.dispose();
+```
+
+The package is TypeScript source (`exports` points at `src/index.ts`); the app's bundler compiles it. With Vite, list it in `optimizeDeps.exclude` so the worker URL survives. No framework, no dependencies. The worker is loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand; elsewhere it quietly analyses on the main thread instead.
 
 ## Segments and joins
 

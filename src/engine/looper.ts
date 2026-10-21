@@ -5,7 +5,7 @@
 import { Analyzer } from '../analysis/analyzer';
 import { Cutter } from './cuts';
 import { Deck, type JoinLog } from './deck';
-import { barIndexAt, sectionNames, type Quantise } from './plan';
+import { barIndexAt, lastBar, sectionNames, type Quantise } from './plan';
 import { applyDelta, emptyScore, type Score, type ScoreDelta } from '../score/types';
 import { hashFile, loadScore, saveScore } from '../score/cache';
 import { readTags } from '../audio/tags';
@@ -60,7 +60,7 @@ export class Looper {
     const mono = new Float32Array(buffer.length);
     for (let c = 0; c < buffer.numberOfChannels; c++) { const d = buffer.getChannelData(c); for (let i = 0; i < d.length; i++) mono[i] += d[i] / buffer.numberOfChannels; }
     this.buffer = buffer; this.mono = mono; this.cues = []; this.cueIndex = -1;
-    const track = { title: tags.title || file.name.replace(/\.[^.]+$/, ''), artist: tags.artist, album: tags.album, year: tags.year || undefined, durationSec: buffer.duration, art: null, hash };
+    const track = { title: tags.title || file.name.replace(/\.[^.]+$/, ''), artist: tags.artist, album: tags.album, ...(tags.year ? { year: tags.year } : {}), durationSec: buffer.duration, art: null, hash };
     const cached = await loadScore(hash);
     if (cached?.final) {
       this.setScore(cached);
@@ -140,6 +140,14 @@ export class Looper {
   /** Loop an arbitrary passage (downbeat times), e.g. a selection. */
   loop(from: number, to: number) { this.cueIndex = -1; this.deck.setLoop(from, to, 'selection'); }
   release() { this.deck.release(); }
+  /** Hold everything where it is (the audio clock stops), and carry on from there. */
+  pause() { void this.deck.ctx.suspend(); }
+  resume() { void this.deck.ctx.resume(); }
+  get paused() { return this.deck.ctx.state === 'suspended'; }
+  /** Output level, 0..1 linear gain, faded over `rampSec`. */
+  setVolume(gain: number, rampSec = 0) { this.deck.setVolume(gain, rampSec); }
+  /** Done with this Looper: stops the worker, the audio and the AudioContext. */
+  dispose() { this.worker?.terminate(); this.worker = null; this.deck.dispose(); }
 
   /** The cue in play: the one last chosen while it is still targeted or playing, else the cue under the playhead. */
   currentCue(): number {
@@ -160,11 +168,4 @@ export class Looper {
       loop: d.loop, joins: d.joins,
     };
   }
-}
-
-/** The last downbeat before `end` (so a final section's loop is whole bars). */
-function lastBar(score: Score, end: number): number {
-  let t = end;
-  for (const b of score.beats) if (b.downbeat && b.t < end - 0.5) t = b.t;
-  return t;
 }
