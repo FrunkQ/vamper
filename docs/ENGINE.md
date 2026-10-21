@@ -24,23 +24,14 @@ song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) �
 | `public/sw.js`, `public/manifest.webmanifest`, `public/icon*` | The installable app: manifest, icons, and a service worker that caches the page (network first) and the hashed build files (cache first) so it opens offline. Bump `CACHE` in `sw.js` if its caching rules change. |
 | `tools/join-test.mjs` | The headless join test (`npm test`). |
 
-Using the engine elsewhere: install it from this repository, pinned to a commit, rather than copying files, so every fix arrives exactly:
+Using the engine elsewhere: install it from this repository, pinned to a commit (`npm install github:FrunkQ/vamper#<commit>`), rather than copying files, so every fix arrives exactly. The README's "Use the engine in your own app" has a worked example; Mappadux is the first app to use it (`src/audio/VamperSongPlayer.ts` there).
 
-```
-npm install github:FrunkQ/vamper#<commit>
-```
-
-```ts
-import { Looper, barSpan } from 'vamper';
-const looper = new Looper();
-await looper.load(file, p => showProgress(p));        // a File (wrap a Blob with new File([blob], name))
-const [from, to] = barSpan(looper.score!, 0, 30);       // rough seconds to whole bars
-looper.cues = [{ name: 'Calm', from, to, mode: 'loop' }, { name: 'Fight', from: 95, to: 0, mode: 'once' }];
-looper.goTo(0); looper.goTo(1);                       // changes land on the next bar
-looper.setVolume(0.8, 1.5); looper.pause(); looper.resume(); looper.dispose();
-```
-
-The package is TypeScript source (`exports` points at `src/index.ts`); the app's bundler compiles it. With Vite, list it in `optimizeDeps.exclude` so the worker URL survives. No framework, no dependencies. The worker is loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand; elsewhere it quietly analyses on the main thread instead.
+- **The package** is TypeScript source: `exports` points at `src/index.ts`, and `files` in `package.json` lists what an app receives (the engine, analysis, score cache, tag reader, licence and docs). The app's bundler compiles it.
+- **Public API** = what `src/index.ts` exports. Add to it; don't rename or remove, or a pinned app breaks on its next update.
+- **Strictness:** `tsconfig.lib.json` compiles the engine under Mappadux's flags (`exactOptionalPropertyTypes`, `noUnused*`, `verbatimModuleSyntax`); `npm run typecheck` runs it, and so does CI.
+- **Worker:** loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand (with Vite, list `vamper` in `optimizeDeps.exclude`); elsewhere it quietly analyses on the main thread instead.
+- **Cues:** a `once` cue plays on from `from` to the end of the song; its `to` is ignored. `barSpan(score, from, to)` turns rough seconds into a whole-bar passage at least one bar long (`to` null = the last bar).
+- **Storage:** scores are cached in IndexedDB database `vamper` (store `scores`), keyed by a hash of the file.
 
 ## Segments and joins
 
