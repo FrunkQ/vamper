@@ -4,7 +4,7 @@
   "description": "A film-score looper for game masters. Installable browser app using your own music files.",
   "private": true,
   "type": "module",
-  "license": "Unlicense",
+  "license": "MIT",
   "exports": {
     ".": "./src/index.ts"
   },
