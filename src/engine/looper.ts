@@ -2,6 +2,7 @@
 // cached), mark cues, then orchestrate in play: next(), prev(), goTo(i). Each change lands at the
 // next quantise point (a bar by default) with a click-free join. No framework, no DOM beyond Web
 // Audio, a Worker and IndexedDB, so it can be dropped into other apps (see docs/ENGINE.md).
+import { Analyzer } from '../analysis/analyzer';
 import { Cutter } from './cuts';
 import { Deck, type JoinLog } from './deck';
 import { barIndexAt, sectionNames, type Quantise } from './plan';
@@ -68,27 +69,44 @@ export class Looper {
     }
     const score = emptyScore(track, buffer.duration);
     this.setScore(score);
-    return new Promise(resolve => {
-      const w = this.worker = new Worker(new URL('../analysis/worker.ts', import.meta.url), { type: 'module' });
+    const done = () => {
+      void saveScore(score);
+      onProgress?.({ stage: 'done', done: 1, etaSec: 0, cached: false });
+      return score;
+    };
+    const progress = (analyzedSec: number, wallSec: number) => {
+      const rate = analyzedSec / Math.max(1e-3, wallSec);
+      onProgress?.({ stage: 'analyse', done: analyzedSec / buffer.duration, etaSec: analyzedSec > 2 ? (buffer.duration - analyzedSec) / rate : null, cached: false });
+    };
+    const delta = (d: ScoreDelta) => { applyDelta(score, d); this.onChange?.(); };
+    const viaWorker = await new Promise<boolean>(resolve => {
+      let w: Worker;
+      try { w = this.worker = new Worker(new URL('../analysis/worker.ts', import.meta.url), { type: 'module' }); }
+      catch { resolve(false); return; }
+      let heard = false;
+      w.onerror = () => { if (!heard) { w.terminate(); resolve(false); } };
       w.onmessage = (ev: MessageEvent) => {
         const m = ev.data;
-        if (m.type === 'progress') {
-          const rate = m.analyzedSec / Math.max(1e-3, m.wallSec);
-          onProgress?.({ stage: 'analyse', done: m.analyzedSec / buffer.duration, etaSec: m.analyzedSec > 2 ? (buffer.duration - m.analyzedSec) / rate : null, cached: false });
-        } else if (m.type === 'delta') {
-          applyDelta(score, m.delta as ScoreDelta);
-          this.onChange?.();
-          if (score.final) {
-            w.terminate(); this.worker = null;
-            void saveScore(score);
-            onProgress?.({ stage: 'done', done: 1, etaSec: 0, cached: false });
-            resolve(score);
-          }
+        heard = true;
+        if (m.type === 'progress') progress(m.analyzedSec, m.wallSec);
+        else if (m.type === 'delta') {
+          delta(m.delta);
+          if (score.final) { w.terminate(); this.worker = null; resolve(true); }
         }
       };
       const pcm = mono.slice();
       w.postMessage({ type: 'start', pcm, sampleRate: buffer.sampleRate }, [pcm.buffer]);
     });
+    if (viaWorker) return done();
+    // No worker (a sandboxed page, or a bundler that can't load one): analyse here, a chunk at a time.
+    const a = new Analyzer(mono, buffer.sampleRate, { chunkSec: 3 }), t0 = performance.now();
+    while (!a.finished) {
+      const d = a.step();
+      if (d) delta(d);
+      progress(a.analyzedSec, (performance.now() - t0) / 1000);
+      await new Promise(r => setTimeout(r, 0));
+    }
+    return done();
   }
 
   private setScore(score: Score) {

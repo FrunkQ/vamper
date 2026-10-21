@@ -140,7 +140,7 @@ function frame() {
     if (st.loop) html += ' · looping';
     if (st.pending) html += ` · next change: <b>${st.pending.label}</b> in ${st.pending.inSec.toFixed(1)} s`;
     $('readout').innerHTML = html;
-    $('joins').textContent = st.joins.map(j => `${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s   step ${j.score.db} dB   match ${j.score.r}${j.score.warn ? '   ⚠ may be audible' : ''}`).reverse().join('\n') || 'No joins yet.';
+    $('joins').textContent = st.joins.map(j => `${j.kind.padEnd(6)} ${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s   step ${j.score.db} dB   match ${j.score.r}${j.kind === 'loop' && j.score.warn ? '   ⚠ may be audible' : ''}`).reverse().join('\n') || 'No joins yet.';
   }
   if (st.cue !== lastCue) { lastCue = st.cue; renderCues(); }
   requestAnimationFrame(frame);
