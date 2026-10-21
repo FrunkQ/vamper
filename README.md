@@ -47,7 +47,7 @@ looper.setVolume(0.8, 1.5); looper.pause(); looper.resume(); looper.dispose();
 
 How it works inside: [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md). Every method and file: [docs/ENGINE.md](docs/ENGINE.md).
 
-**Please credit Vamper** where your users can see it, such as an About page or credits list: *Music engine: [Vamper](https://github.com/FrunkQ/vamper) by FrunkQ.*
+**Credit:** Vamper is [MIT licensed](LICENSE). The licence requires its notice to stay with the code (installing the package does that: `LICENSE` ships in it). Please also credit it where your users can see it, such as an About page or credits list: *Music engine: [Vamper](https://github.com/FrunkQ/vamper) by FrunkQ.*
 
 ## Run it yourself
 
@@ -62,7 +62,9 @@ The site is static files in `dist/`; `wrangler.jsonc` tells Cloudflare to serve 
 
 ## Credits and licence
 
-Public domain under [The Unlicense](LICENSE).
+[MIT](LICENSE), copyright Alex (FrunkQ). Use it, change it and ship it, including commercially. The licence requires one thing: keep the copyright and licence notice with any copy of the code. Beyond that, please credit Vamper where your users can see it.
+
+Versions before 21 October 2026 (up to commit `f4bfc39`) were released under The Unlicense and stay so.
 
 The music analysis (beats, bars, phrases, sections, moments), the score cache and the tag reader are vendored from [Gondryator](https://github.com/FrunkQ/gondryator) (The Unlicense), with thanks. The YIN pitch detector inside it is from A. de Cheveigné and H. Kawahara, "YIN, a fundamental frequency estimator for speech and music", JASA 2002. The idea of jumping between similar parts of a song owes a lot to Paul Lamere's Infinite Jukebox.
 
