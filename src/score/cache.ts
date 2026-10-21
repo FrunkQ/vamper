@@ -2,7 +2,7 @@
 // Vendored from Gondryator (src/score/cache.ts); only the database name differs.
 import type { Score } from './types';
 
-const DB = 'music-looper';
+const DB = 'vamper';
 const STORE = 'scores';
 const ENGINE_KEY = 'v9'; // bump when the analysis changes so stale scores are ignored
 

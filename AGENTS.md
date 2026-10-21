@@ -1,6 +1,6 @@
 # Notes for agents
 
-Music Looper: an RPG soundtrack looper. The game master marks passages (cues) in a local song; in play they step forward and back and the music changes at the next bar with an inaudible join. Read `docs/ENGINE.md` first; it maps every file.
+Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until the action moves on). The game master marks passages (cues) in a local song; in play they step forward and back and the music changes at the next bar with an inaudible join. Read `docs/ENGINE.md` first; it maps every file.
 
 ## How Alex likes to work
 
@@ -16,6 +16,10 @@ Music Looper: an RPG soundtrack looper. The game master marks passages (cues) in
 - Cut, fade and fit code lives only in `src/engine/cuts.ts`, so the deck and the join test can't drift apart. If you change how a join is made, `npm test` must still pass, and add a case if you found a new way to fail.
 - Never assume a fixed tempo: lengths come from refined downbeats of the recording.
 - The vendored analyser (`src/analysis`, `src/score/types.ts`) is unchanged from Gondryator commit 2f0fa70. If you change it, say so at the top of the file, and bump `ENGINE_KEY` in `src/score/cache.ts` when the score changes.
+
+## Deploy
+
+Cloudflare Workers from `main` (see README): `npm run build`, `npx wrangler deploy`, Node 22. `npm run preview` writes `.cache/artifact.html`, a one-file build for sharing before a deploy.
 
 ## Checks
 

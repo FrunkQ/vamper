@@ -1,6 +1,6 @@
-# Music Looper
+# Vamper
 
-A film-score looper for game masters. Drop in a song from your own machine; it finds the beats, bars and sections. Mark the passages you want (a quiet loop for exploring, a loud one for combat), then during the session just step forward and back, or click a section, and the music moves on at the next bar with a join you shouldn't hear.
+A film-score looper for game masters. In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections. Mark the passages you want (a quiet loop for exploring, a loud one for combat), then during the session just step forward and back, or click a section, and the music moves on at the next bar with a join you shouldn't hear.
 
 Everything runs in your browser. Nothing is uploaded, there are no accounts, and it's free.
 
@@ -12,7 +12,14 @@ Everything runs in your browser. Nothing is uploaded, there are no accounts, and
 
 ## Run it yourself
 
-Node 22.12 or newer: `npm install`, `npm run dev`, open the printed URL. `npm test` runs the headless join test. `npm run build` then `npx wrangler deploy` publishes `dist/` to Cloudflare Workers.
+Node 22.12 or newer: `npm install`, `npm run dev`, open the printed URL. `npm test` runs the headless join test.
+
+## Deploy (Cloudflare Workers)
+
+The site is static files in `dist/`; `wrangler.jsonc` tells Cloudflare to serve them.
+
+- **From the dashboard (deploys on every push to `main`):** Workers & Pages → Create → Import a repository → pick `FrunkQ/vamper`. Build command `npm run build`, deploy command `npx wrangler deploy`, root directory `/`. Node 22 comes from `.node-version`. Add your domain under the worker's Settings → Domains & Routes.
+- **From your machine:** `npm run deploy` (builds, then `npx wrangler deploy`; it asks you to log in to Cloudflare the first time).
 
 ## Credits and licence
 
