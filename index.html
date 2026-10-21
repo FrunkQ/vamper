@@ -4,12 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vamper</title>
+  <meta name="description" content="A film-score looper for game masters. Installable browser app using your own music files." />
+  <meta name="theme-color" content="#1d2026" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <header>
     <h1>Vamper</h1>
     <span id="track">Drop a song anywhere on the page, or <label class="file">open one<input id="file" type="file" accept="audio/*" hidden /></label>. It stays on your machine.</span>
+    <button id="install" hidden>Install app</button>
     <span id="build"></span>
   </header>
   <div id="progress" hidden><div id="bar"></div><span id="progress-text"></span></div>

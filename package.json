@@ -1,7 +1,7 @@
 {
   "name": "vamper",
   "version": "0.1.0",
-  "description": "A film-score looper for game masters: loop a passage of any song until the story moves on.",
+  "description": "A film-score looper for game masters. Installable browser app using your own music files.",
   "private": true,
   "type": "module",
   "license": "Unlicense",

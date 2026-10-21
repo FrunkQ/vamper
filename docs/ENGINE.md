@@ -18,6 +18,7 @@ song file ──decode──> AudioBuffer ──mono──> Analyzer (worker) �
 | `src/engine/plan.ts` | Musical decisions on the score: bar starts, the next beat/bar/phrase, the following section, section letters. |
 | `src/main.ts`, `src/view.ts` | The editor page, a thin layer over `Looper`: canvas strip and waveform, buttons, keys, cue list (saved in `localStorage` by file hash). |
 | `src/analysis/*`, `src/score/*`, `src/audio/tags.ts` | Vendored from Gondryator, unchanged except the worker (no auto-tune) and the cache's database name. |
+| `public/sw.js`, `public/manifest.webmanifest`, `public/icon*` | The installable app: manifest, icons, and a service worker that caches the page (network first) and the hashed build files (cache first) so it opens offline. Bump `CACHE` in `sw.js` if its caching rules change. |
 | `tools/join-test.mjs` | The headless join test (`npm test`). |
 
 Using the engine elsewhere: copy `src/engine`, `src/analysis`, `src/score` and `src/audio/tags.ts`. No framework, no dependencies. The worker is loaded with `new URL('../analysis/worker.ts', import.meta.url)`, which Vite and webpack understand; elsewhere it quietly analyses on the main thread instead.

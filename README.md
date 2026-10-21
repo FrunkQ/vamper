@@ -1,8 +1,10 @@
 # Vamper
 
-A film-score looper for game masters. In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections. Mark the passages you want (a quiet loop for exploring, a loud one for combat), then during the session just step forward and back, or click a section, and the music moves on at the next bar with a join you shouldn't hear.
+A film-score looper for game masters. Installable browser app using your own music files.
 
-**Use it at [vamper.starsystemx.com](https://vamper.starsystemx.com).** Everything runs in your browser. Nothing is uploaded, there are no accounts, and it's free.
+In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections. Mark the passages you want (a quiet loop for exploring, a loud one for combat), then during the session just step forward and back, or click a section, and the music moves on at the next bar with a join you shouldn't hear.
+
+**Use it at [vamper.starsystemx.com](https://vamper.starsystemx.com).** Everything runs in your browser. Nothing is uploaded, there are no accounts, and it's free. Install it from the browser's address bar (or the **Install app** button) and it opens in its own window, offline too.
 
 ## Use it
 

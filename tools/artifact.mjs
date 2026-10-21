@@ -6,7 +6,7 @@ import { buildSync } from 'esbuild';
 
 const commit = execSync('git rev-parse --short HEAD').toString().trim();
 const js = buildSync({ entryPoints: ['src/main.ts'], bundle: true, minify: true, format: 'iife', write: false, target: 'es2022', logLevel: 'error',
-  define: { __BUILD__: JSON.stringify(`${commit} · preview`) } }).outputFiles[0].text;
+  define: { __BUILD__: JSON.stringify(`${commit} · preview`), 'import.meta.env.PROD': 'false' } }).outputFiles[0].text;
 const css = fs.readFileSync('src/style.css', 'utf8');
 const html = fs.readFileSync('index.html', 'utf8');
 const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('<script type="module"'));

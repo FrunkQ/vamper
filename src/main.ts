@@ -8,6 +8,12 @@ declare const __BUILD__: string;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 $('build').textContent = __BUILD__;
 
+// Installable app: the service worker (public/sw.js) caches the page so it opens offline.
+if ('serviceWorker' in navigator && import.meta.env.PROD) void navigator.serviceWorker.register('./sw.js').catch(() => { /* no offline: fine */ });
+let installPrompt: any = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; $('install').hidden = false; });
+$('install').onclick = () => { installPrompt?.prompt(); installPrompt = null; $('install').hidden = true; };
+
 const looper = new Looper();
 const ui: ViewState = { selection: null };
 const canvas = $<HTMLCanvasElement>('view');
