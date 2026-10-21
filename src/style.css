@@ -1,0 +1,29 @@
+:root { --bg: #14161a; --panel: #1d2026; --fg: #e6e6e6; --dim: #8a909c; --accent: #f0b429; --loop: #3fa7ff; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+header { display: flex; gap: 16px; align-items: baseline; padding: 12px 16px; background: var(--panel); }
+h1 { font-size: 18px; margin: 0; }
+#track { flex: 1; color: var(--dim); }
+#build { color: var(--dim); font-size: 12px; }
+.file { color: var(--accent); cursor: pointer; text-decoration: underline; }
+#progress { position: relative; height: 22px; background: var(--panel); border-top: 1px solid #000; }
+#bar { height: 100%; width: 0; background: #2d5d33; transition: width .2s; }
+#progress-text { position: absolute; left: 16px; top: 2px; font-size: 13px; }
+main { padding: 12px 16px; }
+#lane { overflow-x: auto; background: #0e0f12; border-radius: 6px; }
+canvas { display: block; height: 220px; cursor: crosshair; }
+#controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+button, select { background: var(--panel); color: var(--fg); border: 1px solid #333842; border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .4; cursor: default; }
+#readout { font-size: 16px; padding: 10px 12px; background: var(--panel); border-radius: 6px; min-height: 44px; }
+#readout b { color: var(--accent); }
+#cues { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.cue { display: flex; gap: 6px; align-items: center; padding: 8px 10px; border-radius: 6px; background: var(--panel); border: 2px solid transparent; }
+.cue.on { border-color: var(--accent); }
+.cue input { width: 110px; background: transparent; border: 0; color: var(--fg); font: inherit; font-weight: 600; }
+.cue button { padding: 3px 8px; }
+.cue small { color: var(--dim); }
+pre { font-size: 12px; color: var(--dim); max-height: 200px; overflow: auto; }
+.help { color: var(--dim); font-size: 13px; }
+body.drag { outline: 3px dashed var(--accent); outline-offset: -6px; }

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Music Looper</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Music Looper</h1>
+    <span id="track">Drop a song anywhere on the page, or <label class="file">open one<input id="file" type="file" accept="audio/*" hidden /></label>. It stays on your machine.</span>
+    <span id="build"></span>
+  </header>
+  <div id="progress" hidden><div id="bar"></div><span id="progress-text"></span></div>
+  <main>
+    <div id="lane"><canvas id="view"></canvas></div>
+    <div id="controls">
+      <button id="play" title="Space">▶ Play</button>
+      <button id="prev" title="Left arrow">◀ Back</button>
+      <button id="next" title="Right arrow">Next ▶</button>
+      <button id="loop" title="L">Loop selection</button>
+      <button id="release" title="R">Play on</button>
+      <button id="addcue" title="C">+ Cue from selection</button>
+      <label>Change at <select id="quantise">
+        <option value="beat">next beat</option>
+        <option value="bar" selected>next bar</option>
+        <option value="phrase">next phrase</option>
+        <option value="loop">end of loop pass</option>
+      </select></label>
+      <label>Zoom <input id="zoom" type="range" min="1" max="8" step="0.5" value="1" /></label>
+    </div>
+    <div id="readout">No song loaded.</div>
+    <div id="cues"></div>
+    <details id="debug"><summary>Joins (debug)</summary><pre id="joins"></pre></details>
+    <p class="help">Drag across the waveform to select bars; click to play from a bar. Click a block on the strip to go there. Keys: Space play/stop, ← → back/next cue, 1-9 jump to a cue, L loop the selection, R play on, C add a cue.</p>
+  </main>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

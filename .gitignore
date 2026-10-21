@@ -1,0 +1,6 @@
+node_modules
+dist
+.cache
+test-tracks/*.wav
+test-tracks/*.mp3
+test-tracks/out

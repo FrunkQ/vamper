@@ -1,0 +1,21 @@
+{
+  "name": "music-looper",
+  "version": "0.1.0",
+  "description": "A film-score looper for game masters: loop a passage of any song until the story moves on.",
+  "private": true,
+  "type": "module",
+  "license": "Unlicense",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc",
+    "make-tracks": "node tools/make-test-tracks.mjs",
+    "test": "node tools/join-test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2"
+  },
+  "engines": { "node": ">=22.12" }
+}
