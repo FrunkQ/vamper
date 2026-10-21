@@ -9,7 +9,7 @@ Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until 
 - Never a blank screen; every wait shows progress and a time.
 - The engine must stay small and framework-free: Alex reuses it in other apps. `Looper` (src/engine/looper.ts) is the public face; keep UI out of `src/engine`.
 - Licence: The Unlicense; credit third-party code in the README.
-- Alex listens on the deployed site. You can't judge audio in a container: ship, give the commit hash, and ask which joins they hear. The debug list (Joins) gives times to talk about.
+- Alex listens on the deployed site, https://vamper.starsystemx.com. You can't judge audio in a container: ship, give the commit hash, and ask which joins they hear. The debug list (Joins) gives times to talk about.
 
 ## Rules of the engine
 
@@ -19,7 +19,7 @@ Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until 
 
 ## Deploy
 
-Cloudflare Workers from `main` (see README): `npm run build`, `npx wrangler deploy`, Node 22. `npm run preview` writes `.cache/artifact.html`, a one-file build for sharing before a deploy.
+Live at https://vamper.starsystemx.com, deployed by Cloudflare Workers Builds on every push to `main` (see README). The build stamp (commit and date) in the page header shows which build is live: `npm run build`, `npx wrangler deploy`, Node 22. `npm run preview` writes `.cache/artifact.html`, a one-file build for sharing before a deploy.
 
 ## Checks
 
