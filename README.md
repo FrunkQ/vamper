@@ -9,7 +9,7 @@ In film and game scoring, *vamping* is holding a phrase until the action moves o
 ## Use it
 
 1. Drop a song on the page (MP3, WAV, FLAC, OGG, M4A). It is analysed in a few seconds and remembered for next time. Then it listens for singing and talking (a few seconds, while you can already play), so a change waits a bar or two rather than cut a sung line in half.
-2. Until you make cues, every section is a cue. To make your own, drag across the waveform to select bars and press **+ Cue** (or `C`). Each cue loops until you move on, or plays **once** and carries on.
+2. Until you make cues, every section is a cue. To make your own, drag across the waveform to select bars and press **+ Cue** (or `C`). Each cue loops until you move on, **riffs** (plays its bars in a varied order, like a band vamping, so a long scene doesn't hear the same tape over and over; 🎲 for another riff), or plays **once** and carries on. The cue's mode button switches between them.
 3. Play with `Space`, step with `←` `→`, jump with `1`-`9`, or click a block on the strip. The readout says when the change will land.
 
 ## Use the engine in your own app
@@ -31,7 +31,7 @@ const [calmFrom, calmTo] = barSpan(looper.score!, 0, 30);
 const [fightFrom, fightTo] = barSpan(looper.score!, 95, 125);
 looper.cues = [
   { name: 'Calm',  from: calmFrom,  to: calmTo,  mode: 'loop' },
-  { name: 'Fight', from: fightFrom, to: fightTo, mode: 'loop' },
+  { name: 'Fight', from: fightFrom, to: fightTo, mode: 'riff' },   // its bars in a varied order; add seed: n to pick a riff
 ];
 
 looper.goTo(0);            // starts at once from silence

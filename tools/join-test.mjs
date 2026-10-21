@@ -6,14 +6,17 @@
 //   - level: short-term loudness across the crossfade stays between the two sides (no dip, no bump),
 //     wherever it is within 20 dB of the music around it;
 //   - groove: the bar spanning the join is as long as the same bar in the source, within 3 ms.
+// Then it riffs on eight bars of each track (src/engine/riff.ts) for 32 bars, checks the walk keeps
+// its rules (jumps happen, mostly in order, never the same jump twice running, the place in the
+// phrase kept, the same seed replays it, a sung line stops jumps), and measures those joins too.
 //   node tools/join-test.mjs            (exits 1 if any join fails)
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { buildSync } from 'esbuild';
 
 fs.mkdirSync('.cache', { recursive: true });
-buildSync({ stdin: { contents: "export * from './src/analysis/analyzer'; export * from './src/engine/cuts'; export * from './src/engine/plan';", resolveDir: '.', loader: 'ts' }, bundle: true, format: 'esm', platform: 'node', outfile: '.cache/engine.mjs', logLevel: 'error' });
-const { Analyzer, Cutter, render, barStarts, followingSection, nextCut } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
+buildSync({ stdin: { contents: "export * from './src/analysis/analyzer'; export * from './src/engine/cuts'; export * from './src/engine/plan'; export * from './src/engine/riff';", resolveDir: '.', loader: 'ts' }, bundle: true, format: 'esm', platform: 'node', outfile: '.cache/engine.mjs', logLevel: 'error' });
+const { Analyzer, Cutter, Riff, render, barStarts, followingSection, nextCut } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
 
 const TRACKS = ['test-124', 'test-100', 'test-120'];
 if (TRACKS.some(t => !fs.existsSync(`test-tracks/${t}.wav`))) execFileSync('node', ['tools/make-test-tracks.mjs'], { stdio: 'inherit' });
@@ -39,7 +42,7 @@ let failures = 0;
 for (const name of TRACKS) {
   const { x, sr } = readWav(`test-tracks/${name}.wav`);
   const a = new Analyzer(x, sr, { chunkSec: 4 });
-  const score = { beats: [], sections: [], phrases: [] };
+  const score = { beats: [], sections: [], phrases: [], bars: [] };
   while (!a.finished) { const d = a.step(); if (d) for (const k of Object.keys(score)) score[k].push(...d[k]); }
   const bars = barStarts(score), cut = new Cutter(x, sr), X = cut.xfade;
 
@@ -58,13 +61,49 @@ for (const name of TRACKS) {
   add(A, B); add(A, B, B); add(A, B, B); // three passes
   add(next.t, bars[nb + 4], mid);        // advance at the next bar, mid-pass
   add(A, B, bars[nb + 4]);               // step back to the loop
+  measure(name, x, sr, bars, cut, plan);
+  console.log(`  (loop bars ${i0 + 1}-${i0 + 4} of "${sec.label}", advance to "${next.label}" at bar ${nb + 1})`);
+
+  // A riff on eight bars from the same place, 32 bars long, as the deck plays it: one segment per run.
+  const riffScore = { ...score, envelopes: {}, soundsFrontier: 0 };
+  const P = [bars[i0], bars[i0 + 8]], db = (o, i) => cut.score(cut.join(o), cut.join(i)).db;
+  const walk = (seed, sc = riffScore) => {
+    const r = new Riff(sc, P[0], P[1], { seed, joinDb: db }), runs = [];
+    r.start(0);
+    while (r.path.length < 32) runs.push(r.next());
+    return { r, runs };
+  };
+  const { r, runs } = walk(7);
+  const riffPlan = [];
+  for (const run of runs) { const seg = cut.segment(run.from, run.to), prev = riffPlan.at(-1); if (prev) cut.fit(prev, seg); riffPlan.push(seg); }
+  const jumps = runs.filter(u => u.jump).map(u => u.jump);
+  const path = r.path.join(' ');
+  console.log(`\n${name} riff on bars ${i0 + 1}-${i0 + 8}: ${r.jumpCount} possible jumps, unit ${r.unit}; path ${path}`);
+  console.log(`  jumps taken: ${jumps.map(j => `${j.from + 1}→${j.to + 1} (sim ${j.sim}, ${j.db} dB)`).join(', ') || 'none'}`);
+  const rules = [
+    ['the passage has jumps', r.jumpCount > 0],
+    ['it jumps at least once in 32 bars', jumps.length > 0],
+    ['mostly in order (at least half the bars follow the one before)', r.path.filter((b, k) => k && b === r.path[k - 1] + 1).length >= 16],
+    ['never the same jump twice running', jumps.every((j, k) => !k || j.from !== jumps[k - 1].from || j.to !== jumps[k - 1].to)],
+    ['every jump keeps the place in the phrase', jumps.every(j => ((j.to - j.from - 1) % r.unit + r.unit) % r.unit === 0)],
+    ['the same seed replays the same riff', walk(7).r.path.join(' ') === path],
+  ];
+  // A sung line over the whole passage: no jumps, only the loop's own wrap.
+  const sung = { ...riffScore, envelopes: { voice: { rate: 1, values: Array(Math.ceil(x.length / sr)).fill(0.9) } }, soundsFrontier: x.length / sr };
+  rules.push(['a sung line everywhere stops every jump', walk(7, sung).runs.every(u => !u.jump)]);
+  for (const [what, ok] of rules) { if (!ok) failures++; console.log(`  ${what}: ${ok ? 'ok' : 'FAIL'}`); }
+  measure(name + '-riff', x, sr, bars, cut, riffPlan);
+}
+
+/** Render a plan, write its WAV, and measure every join in it (click, level, groove). */
+function measure(name, x, sr, bars, cut, plan) {
+  const X = cut.xfade;
   const [out] = render([x], plan, X);
   writeWav(`test-tracks/out/${name}-session.wav`, out, sr);
-
   // Where each join lands in the output.
   const limit = maxJump(x) * 1.0 + 1e-4, outCut = new Cutter(out, sr);
   let p = 0;
-  console.log(`\n${name}: loop bars ${i0 + 1}-${i0 + 4} of "${sec.label}", advance to "${next.label}" at bar ${nb + 1}; source max jump ${limit.toFixed(3)}`);
+  console.log(`\n${name}: ${plan.length - 1} joins; source max jump ${limit.toFixed(3)}`);
   for (let k = 1; k < plan.length; k++) {
     p += plan[k - 1].e - plan[k - 1].s - X;
     const j = p + X; // the join in the output: where the incoming side is fully in
@@ -90,6 +129,7 @@ for (const name of TRACKS) {
     console.log(`  join ${k} at ${(j / sr).toFixed(3)} s: jump ${jump.toFixed(3)}, level off by ${worst.toFixed(1)} dB, bar ${groove.toFixed(1)} ms off, score ${sc.db} dB / r ${sc.r}  ${ok ? 'ok' : 'FAIL'}`);
   }
 }
+
 // Voice-aware changes (plan.ts nextCut), on a made-up voice curve over the last track: a sung line
 // across the next two bar lines makes a change wait for the third; with no voice it doesn't wait;
 // a line across every bar in reach falls back to the least-bad one (a phrase start if there is one).

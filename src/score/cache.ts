@@ -4,7 +4,7 @@ import type { Score } from './types';
 
 const DB = 'vamper';
 const STORE = 'scores';
-const ENGINE_KEY = 'v9'; // bump when the analysis changes so stale scores are ignored
+const ENGINE_KEY = 'v10'; // bump when the analysis changes so stale scores are ignored
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

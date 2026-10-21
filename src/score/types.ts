@@ -1,4 +1,5 @@
-// Vendored from Gondryator (https://github.com/FrunkQ/gondryator, The Unlicense), unchanged.
+// Vendored from Gondryator (https://github.com/FrunkQ/gondryator, The Unlicense). One addition: `bars`
+// (each bar's features, for riffing).
 // The score: the one data format between analysis and every renderer (spec section 5).
 // Renderers never touch raw audio. Everything here is plain JSON so it can be cached,
 // exported, and read by a future UE5 renderer.
@@ -82,6 +83,25 @@ export interface Moment {
 }
 
 /**
+ * What one bar sounds like, from the analyser's per-bar features, so bars can be compared (riffing:
+ * which bar may follow which). `bar` is 1-based like `beats`; `t` its downbeat.
+ */
+export interface BarFeature {
+  t: number;
+  bar: number;
+  /** Drum hits: kick, snare and hat rows of 16 sixteenths each (48), the loudest hit's velocity 0..1. */
+  grid: number[];
+  /** Harmony: how much of each of the 12 pitch classes (C first) sounds, the strongest = 1. */
+  chroma: number[];
+  /** Bass notes: a pitch-class histogram (12), the commonest = 1. */
+  bass: number[];
+  /** Mean loudness (dB) of the low, mid and high bands. */
+  db: number[];
+  /** Kick, snare and hat hits per beat. */
+  density: number[];
+}
+
+/**
  * Continuous curves at 50 Hz: per-band loudness (`mix`, `bass`, `other`, `drums`), plus the shapes
  * between the hits: `contour` (the melody's pitch, 0 low .. 1 high, held through gaps),
  * `bright` (how bright the sound is), `rise` (build-ups: loudness and brightness climbing),
@@ -145,6 +165,8 @@ export interface Score {
    * before they existed and in scores from MIDI files; treat missing as unknown, not as none.
    */
   moments?: Moment[];
+  /** Each bar's features, in order. Missing in scores cached before they existed and from MIDI files. */
+  bars?: BarFeature[];
   events: ScoreEvent[];
   envelopes: Partial<Record<EnvelopeKey, Envelope>>;
   /**
@@ -168,6 +190,7 @@ export interface ScoreDelta {
   sections: Section[];
   phrases: Phrase[];
   moments?: Moment[];
+  bars?: BarFeature[];
   events: ScoreEvent[];
   envelopes: Partial<Record<EnvelopeKey, number[]>>;
   envelopeRate: number;
@@ -184,6 +207,7 @@ export function emptyScore(track: Score['track'], durationSec: number): Score {
     sections: [],
     phrases: [],
     moments: [],
+    bars: [],
     events: [],
     envelopes: {},
     frontierSec: 0,
@@ -200,6 +224,7 @@ export function applyDelta(score: Score, d: ScoreDelta): void {
   for (const x of d.sections) score.sections.push(x);
   for (const x of d.phrases) score.phrases.push(x);
   if (d.moments) for (const x of d.moments) (score.moments ??= []).push(x);
+  if (d.bars) for (const x of d.bars) (score.bars ??= []).push(x);
   for (const x of d.events) score.events.push(x);
   for (const k of Object.keys(d.envelopes) as EnvelopeKey[]) {
     const env = (score.envelopes[k] ??= { rate: d.envelopeRate, values: [] });
