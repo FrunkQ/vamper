@@ -63,7 +63,7 @@ Where a join goes:
 4. **The fade adapts to the material:** `fadeGains(x, r)` is equal power for unrelated audio (r = 0), equal gain for identical audio (r = 1, so a loop of identical bars doesn't bump), and boosted for partly cancelling audio (r down to -0.5).
 5. **Lengths come from the recording,** never from a tempo: a loop is the audio between two refined downbeats.
 
-**Voice.** With a voice curve, `Deck.change` asks `nextCut` (plan.ts) instead of `nextBoundary`: when the voice is above `VOICE_QUIET` (0.3) on both sides of the next quantise point (±0.3 s), it may wait up to `voiceWaitBars` (2) more bars for one that isn't, else takes the least-bad (a phrase start counts 0.2 better). `pending.forVoice` says it waited. Every `JoinLog` carries `voice`, the worse of `voiceAcross` at its two grid times (null where the pass hasn't listened). A loop's own wrap is where the cue says, so the editor flags a cue whose wrap cuts a vocal instead.
+**Voice.** With a voice curve, `Deck.change` asks `nextCut` (plan.ts) instead of `nextBoundary`: when the voice is above `VOICE_QUIET` (0.3) on both sides of the next quantise point (±0.3 s), it may wait up to `voiceWaitBars` (2) more bars for one that isn't, else takes the least-bad (a phrase start counts 0.2 better). `pending.forVoice` says it waited. Every `JoinLog` carries `voice`, the worse of `voiceAcross` at its two grid times (null where the pass hasn't listened). A loop's own wrap is where the cue says, so the hold finder (holds.ts) shortens a loop whose wrap cuts a vocal, and the page's list says so when it can't.
 
 The join score (`Cutter.score`) is the loudness step between what would have followed the cut and what follows instead, over 80 ms. For a loop's wrap, more than 3 dB is flagged as likely audible (a red mark under the waveform, ⚠ in the debug list). For a change of section a big step is just the music changing.
 
@@ -99,4 +99,4 @@ What it can't tell you: whether a join on real music is heard. That's Alex's lis
 
 ## Not yet
 
-Voice-aware snapping of cue ends when they are made; voice-aware loop wraps. Riffs that follow the game's intensity (a riff cue that leans toward its louder bars as tension rises); an AudioWorklet deck, grid repair (shift downbeat, halve/double, drag a bar line), cue sheets as JSON files and in IndexedDB, a big-button live mode, playlists.
+A change between songs on the beat (fade the old one out over a bar, start the new one on its first downbeat; `select` just stops and `play` starts). Riffs that follow the game's intensity (a riff that leans toward its louder bars as tension rises). Changes on the analyser's moments (a stop, a build). Grid repair (shift downbeat, halve/double, drag a bar line). An AudioWorklet deck.

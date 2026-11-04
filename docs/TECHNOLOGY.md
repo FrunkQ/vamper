@@ -134,7 +134,7 @@ flowchart LR
 
 **How it changes a cut.** A cut at a bar line counts as splitting a line when the voice curve is above 0.3 on **both** sides of it (0.3 s before and after), so a line that ends just before the bar, or starts on it, is fine. When the next quantise point would split a line, the change may wait **up to two more bars** for one that doesn't. If every bar line in reach splits a line, it takes the least-bad one, counting a phrase start as a little better (a new vocal line usually starts on one). The readout says "(waiting for a gap in the vocal)" when that happens.
 
-**What it shows.** Singing and talking are washed pink over the waveform, so you can see why a part loops rather than riffs and why a change waited. Every join in **Joins (debug)** lists its `voice` (the worse of its two sides; `?` until the pass has listened there), with 🎤 when it cuts a vocal, and a pink mark under the waveform. A loop cue whose wrap splits a line says "🎤 wrap cuts a vocal" in the cue list, because that will be heard on every pass: move its ends by a bar.
+**What it shows.** Singing and talking are washed pink over the waveform, so you can see why a part loops rather than riffs and why a change waited. Every join in **Joins (debug)** lists its `voice` (the worse of its two sides; `?` until the pass has listened there), with 🎤 when it cuts a vocal, and a pink mark under the waveform. A loop whose wrap would split a line is shortened to whole phrases whose wrap is clear (see [Cues and holds](#cues-and-holds-what-the-music-should-do)); if none is, the fine-tune list says "the repeat cuts a sung line", because that is heard on every pass.
 
 What it can't do: it hears *a voice*, not words, so it can't find the end of a sentence, and a breath between two words inside one window looks like singing throughout. With windows of about a second, it is a guide for which bar to cut at, not for where inside the bar. On instrumental music it hears nothing, and changes land exactly as before.
 
@@ -299,6 +299,8 @@ A Foundry VTT module would work the same way: the GM's browser analyses, and eve
 
 ## Not yet
 
+- **Changing song on the beat.** Jumping to another song in the rack stops one and starts the other from its top. Fading the old one out over a bar and starting the new one on its first downbeat would make that a musical change too. Beat-matching two songs by stretching them (what a DJ does) is deliberately not planned: a 70 bpm tavern and a 140 bpm fight don't want to meet.
 - **Riffs that follow the game:** a riff that leans toward its louder, busier bars as the tension rises, and back.
-- **Smarter change points:** using the analyser's moments, such as changing on a stop or riding a build into a combat cue.
-- An AudioWorklet deck, grid repair (shift the downbeat, halve or double the tempo, drag a bar line), cue sheets as files, a big-button live mode, and playlists of songs.
+- **Smarter change points:** using the analyser's moments, such as changing on a stop or riding a build into a fight.
+- **Grid repair** for the songs the analyser gets wrong: shift the downbeat, halve or double the tempo, drag a bar line.
+- An AudioWorklet deck, so playback is independent of the page's main thread.

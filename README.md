@@ -1,10 +1,10 @@
 # Vamper
 
-A film-score looper for game masters. Installable browser app using your own music files.
+*Vamp till ready*: music that waits for the game. A browser app for game masters, using your own music files.
 
-In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections, and marks the parts it can wait in. Press Play: the song plays from the top and, at each marked part, keeps playing that part (riffing on its bars, or repeating them) until you press **Go on**. The music moves on at the next bar with a join you shouldn't hear.
+In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections, and marks the parts it can wait in. Press Play: the song plays from the top and, at each marked part, keeps playing that part (riffing on its bars, or repeating them) until you press **Go on**. The music moves on at the next bar with a join you shouldn't hear. Keep a rack of songs, a click apart, for the whole session.
 
-**Use it at [vamper.sublime.co.uk](https://vamper.sublime.co.uk).** Questions, songs that misbehave, ideas: [Discord](https://discord.gg/aec5rGTcyC). If it earns a place at your table, [Ko-fi](https://ko-fi.com/frunkq). Everything runs in your browser. Nothing is uploaded, there are no accounts, and it's free. Install it from the browser's address bar (or the **Install app** button) and it opens in its own window, offline too.
+**Use it at [vamper.sublime.co.uk](https://vamper.sublime.co.uk).** Everything runs in your browser: nothing is uploaded, there are no accounts, and it's free. Install it from the browser's address bar (or the **Install app** button) and it opens in its own window, offline too. Questions, songs that misbehave, ideas: [Discord](https://discord.gg/aec5rGTcyC). If it earns a place at your table: [Ko-fi](https://ko-fi.com/frunkq).
 
 ## Use it
 
@@ -12,7 +12,8 @@ In film and game scoring, *vamping* is holding a phrase until the action moves o
 2. The parts the song will wait in are coloured on the strip: green **riffs** (the band plays the part's bars in a fresh order, so a long scene doesn't hear the same tape over and over), blue **loops** (the part repeats as it is, when its bars are too different to riff on, or it is sung). Pink is singing or talking.
 3. **Play** starts from the top; the song holds at each coloured part until **Go on** (`→` or `Enter`); **Back** (`←`) returns to the part before; **Pause** (`Space`) freezes it where it is for when the phone rings. Click a part to hear it now, click the waveform to play from there, `1`-`9` jump to a part. The readout says what the music is doing and when a change will land.
 4. **Fine-tune**, underneath, lists every part: switch one off to let the song play through it, make it riff or loop, roll another riff (🎲), or drag across the waveform and **Add** your own bars. Choices are remembered per song.
-5. **The rack.** Add more songs (they are read while the music plays on), give each a name for the game (Tavern, Ambush, Court) and a colour, and jump between them with ▶. The rack shows how much memory the songs take. It is kept in your browser, so next time the songs are a click away: nothing is uploaded anywhere.
+5. **The rack.** Add more songs (they are read while the music plays on), give each a name for the game (Tavern, Ambush, Court) and a colour, and jump between them with ▶. The rack shows how much memory the songs take. It is kept in your browser, so next time the songs are a click away.
+6. **A pack.** *Save as a pack* writes one `.vamper` file with the songs, their names, colours and holds. Drop it on Vamper on another machine, or give it to a co-GM.
 
 ## Use the engine in your own app
 
@@ -54,14 +55,13 @@ looper.play(0);           // from the top; looper.release() lets a hold go, and 
 - **Make the first `play`/`goTo` from a click**, as browsers require for audio.
 - **Analysis is cached** per song (by content hash) in the browser's IndexedDB, in a database called `vamper`, so each song is analysed once per device.
 - **To take an update**, re-pin to a newer commit; Mappadux's `npm run vamper:update` does it in one step. The public API is everything exported from [`src/index.ts`](src/index.ts) and only grows: names are added, not renamed.
+- **Credit it** where your users can see it, such as an About page: *Music engine: [Vamper](https://github.com/FrunkQ/vamper) by FrunkQ.* (The MIT licence ships in the package; see [Credits and licence](#credits-and-licence).)
 
-How it works inside: [docs/TECHNOLOGY.md](docs/TECHNOLOGY.md). Every method and file: [docs/ENGINE.md](docs/ENGINE.md).
-
-**Credit:** Vamper is [MIT licensed](LICENSE). The licence requires its notice to stay with the code (installing the package does that: `LICENSE` ships in it). Please also credit it where your users can see it, such as an About page or credits list: *Music engine: [Vamper](https://github.com/FrunkQ/vamper) by FrunkQ.*
+Every method and file: [docs/ENGINE.md](docs/ENGINE.md).
 
 ## Run it yourself
 
-Node 22.12 or newer: `npm install`, `npm run dev`, open the printed URL. `npm test` runs the headless join test.
+Node 22.12 or newer: `npm install`, `npm run dev`, open the printed URL. Checks: `npm run typecheck` (the app and the stricter engine build), `npm test` (the headless join test: joins, riffs, holds, voice-aware changes), `npm run build`.
 
 ## Deploy (Cloudflare Workers)
 

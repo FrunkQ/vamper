@@ -34,9 +34,12 @@ let built = ''; // what the cues were last built from
 // Songs go into the rack one after another; the first (or any added while nothing plays) is
 // selected at once so its analysis can be watched. The rest are read while the music plays on.
 let reading = 0;
-async function addSongs(files: FileList | File[]) {
+/** The files added this visit, by song hash, for saving a pack even when storage is off. */
+const files = new Map<string, File>();
+async function addSongs(list: FileList | File[]) {
   $('welcome').hidden = true; $('song').hidden = false;
-  for (const file of Array.from(files)) {
+  for (const file of Array.from(list)) {
+    if (/\.vamper$/i.test(file.name)) { await openPack(file); continue; }
     if (!file.type.startsWith('audio') && !/\.(mp3|m4a|aac|wav|flac|ogg|opus|aiff?)$/i.test(file.name)) continue;
     reading++;
     const name = aliasOf(file.name, null);
@@ -49,6 +52,7 @@ async function addSongs(files: FileList | File[]) {
           p.stage === 'analyse' ? `Listening to ${name} for the beat and the parts of the song… ${Math.round(p.done * 100)}%${p.etaSec !== null ? `, about ${Math.ceil(p.etaSec)} s left` : ''}` :
           p.cached ? `Heard ${name} before: ready at once.` : `Heard the whole of ${name}.`;
       }, looper.songs.length === 0 || !looper.deck.playing);
+      files.set(song.hash, file);
       void keep(file, song.hash);
     } catch (e) { $('progress-text').textContent = `Couldn't open ${name}: ${(e as Error).message}`; }
     reading--;
@@ -59,7 +63,8 @@ async function addSongs(files: FileList | File[]) {
 looper.onChange = () => {
   if (looper.score && looper.score.track.hash !== hash) { hash = looper.score.track.hash; prefs = loadPrefs(hash); ui.selection = null; built = ''; }
   const t = looper.score?.track;
-  $('track').textContent = t ? `${looper.song ? aliasOf(looper.song.name, looper.song) : t.title}${t.artist ? ' · ' + t.artist : ''} · ${looper.score!.tempo.at(-1)?.bpm ?? '?'} bpm · ${looper.score!.beats.filter(b => b.downbeat).length} bars` : 'Music that waits for the game.';
+  if (t) $('track').textContent = `${looper.song ? aliasOf(looper.song.name, looper.song) : t.title}${t.artist ? ' · ' + t.artist : ''} · ${looper.score!.tempo.at(-1)?.bpm ?? '?'} bpm · ${looper.score!.beats.filter(b => b.downbeat).length} bars`;
+  else $('track').innerHTML = '<b>vamp till ready</b> (music that waits for the game)';
   renderRack();
 };
 
@@ -100,6 +105,54 @@ async function listKept() {
 }
 const bringBack = (k: Kept) => addSongs([new File([k.data], k.name, { type: k.type })]);
 void listKept().then(() => { if (kept.length) { $('welcome').hidden = true; $('song').hidden = false; $('readout').textContent = `Your songs from last time are in the rack: press ▶ on one to bring it back${kept.length > 1 ? ', or Bring them all back' : ''}.`; } });
+
+// ---- a pack: the rack as one file, to move a session to another machine or share it ----
+//
+// Layout: the text "VAMPERPACK1\n", a 4-byte little-endian length, that many bytes of JSON (the
+// manifest: each song's file name, type, size, hash, name, colour and hold choices), then the
+// songs' bytes in order. No zip, so it is written and read with Blob slices, nothing unpacked.
+
+const MAGIC = 'VAMPERPACK1\n';
+interface PackSong { file: string; type: string; size: number; hash: string; alias: string; ink: string; holds: Prefs }
+const get = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const put = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* fine */ } };
+
+async function savePack() {
+  const songs: PackSong[] = [], blobs: Blob[] = [];
+  const have = new Map<string, { name: string; type: string; data: Blob }>();
+  for (const k of kept) have.set(k.hash, k);
+  for (const [h, f] of files) have.set(h, { name: f.name, type: f.type, data: f });
+  for (const [hash, f] of have) {
+    songs.push({ file: f.name, type: f.type, size: f.data.size, hash, alias: get('alias:' + hash) ?? '', ink: get('ink:' + hash) ?? '', holds: loadPrefs(hash) });
+    blobs.push(f.data);
+  }
+  if (!songs.length) return;
+  const manifest = new TextEncoder().encode(JSON.stringify({ version: 1, saved: new Date().toISOString(), songs }));
+  const len = new DataView(new ArrayBuffer(4)); len.setUint32(0, manifest.length, true);
+  const pack = new Blob([MAGIC, len.buffer, manifest, ...blobs], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(pack); a.download = `${songs.length === 1 ? songs[0].alias || songs[0].file.replace(/\.[^.]+$/, '') : 'soundtrack'}.vamper`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+async function openPack(file: File) {
+  const head = new TextDecoder().decode(await file.slice(0, MAGIC.length).arrayBuffer());
+  if (head !== MAGIC) { $('progress').hidden = false; $('progress-text').textContent = `${file.name} isn't a Vamper pack.`; return; }
+  const n = new DataView(await file.slice(MAGIC.length, MAGIC.length + 4).arrayBuffer()).getUint32(0, true);
+  const songs: PackSong[] = JSON.parse(new TextDecoder().decode(await file.slice(MAGIC.length + 4, MAGIC.length + 4 + n).arrayBuffer())).songs;
+  let at = MAGIC.length + 4 + n;
+  const list: File[] = [];
+  for (const p of songs) {
+    list.push(new File([file.slice(at, at + p.size)], p.file, { type: p.type }));
+    at += p.size;
+    if (p.alias) put('alias:' + p.hash, p.alias);
+    if (p.ink) put('ink:' + p.hash, p.ink);
+    put('holds:' + p.hash, JSON.stringify(p.holds));
+    if (p.hash === hash) prefs = loadPrefs(hash);
+  }
+  built = '';
+  await addSongs(list);
+}
 
 // ---- the rack: the songs held, with friendly names, a click apart ----
 
@@ -152,9 +205,15 @@ function renderRack() {
   }
   const add = document.createElement('label');
   add.className = 'chip add';
-  add.innerHTML = '+ Add a song<input id="file" type="file" accept="audio/*" multiple hidden />';
+  add.innerHTML = '+ Add a song<input id="file" type="file" accept="audio/*,.vamper" multiple hidden />';
   add.querySelector('input')!.onchange = e => { const f = (e.target as HTMLInputElement).files; if (f?.length) void addSongs(f); (e.target as HTMLInputElement).value = ''; };
   box.append(add);
+  if (looper.songs.length || kept.length) {
+    const save = document.createElement('button');
+    save.className = 'chip add'; save.textContent = '⬇ Save as a pack'; save.title = 'One file with these songs, their names, colours and holds: drop it on Vamper on another machine, or give it to a co-GM';
+    save.onclick = () => void savePack();
+    box.append(save);
+  }
   const mb = looper.bytes / 2 ** 20, meter = document.createElement('small');
   meter.className = 'meter' + (mb > 1200 ? ' heavy' : '');
   meter.textContent = `${looper.songs.length} ${looper.songs.length === 1 ? 'song' : 'songs'} · ${mb < 1000 ? Math.round(mb) + ' MB' : (mb / 1024).toFixed(1) + ' GB'} in memory${mb > 1200 ? ' (getting heavy: take some out when done with them)' : ''}`;
