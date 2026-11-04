@@ -6,7 +6,8 @@
 // vocal line in half; the song plays while it listens. A `riff` cue plays its bars in a varied
 // order instead of looping them (see riff.ts). With `autoHold` on, a song played from the top
 // waits at each loop or riff cue it reaches until next() or release(); holds() finds those cues
-// from the score (see holds.ts).
+// from the score (see holds.ts). It can hold several songs at once (`add`, `songs`, `select`), each
+// decoded and analysed, so a session can jump between them.
 import { Analyzer } from '../analysis/analyzer';
 import { Cutter } from './cuts';
 import { Deck, type JoinLog } from './deck';
@@ -38,6 +39,21 @@ export interface Cue { name: string; from: number; to: number; mode: 'loop' | 'o
 
 export interface LoadProgress { stage: 'decode' | 'analyse' | 'done'; done: number; etaSec: number | null; cached: boolean }
 
+/** A song held in memory, decoded and (being) analysed, with its own cues; `select` makes it the one played. */
+export interface Song {
+  /** The file's name, and the title from its tags (or the file name without its extension). */
+  name: string;
+  title: string;
+  hash: string;
+  buffer: AudioBuffer;
+  /** The full-rate mono mix (for drawing and for cut refinement). */
+  mono: Float32Array;
+  score: Score;
+  cues: Cue[];
+  /** Memory it takes, in bytes (the decoded channels plus the mono mix). */
+  bytes: number;
+}
+
 export interface LooperState {
   playing: boolean;
   /** Song time being heard (seconds), and the 1-based bar there (0 before the first). */
@@ -55,11 +71,17 @@ export interface LooperState {
 
 export class Looper {
   readonly deck = new Deck();
+  /** The songs held in memory, in the order added; `song` is the one in the deck. */
+  readonly songs: Song[] = [];
+  song: Song | null = null;
+  /** The current song's audio and score (null until one is selected). */
   buffer: AudioBuffer | null = null;
-  /** The full-rate mono mix (for drawing and for cut refinement). */
   mono: Float32Array | null = null;
   score: Score | null = null;
-  cues: Cue[] = [];
+  private noSongCues: Cue[] = [];
+  /** The current song's cues (kept with the song, so they come back when it is selected again). */
+  get cues(): Cue[] { return this.song ? this.song.cues : this.noSongCues; }
+  set cues(c: Cue[]) { if (this.song) this.song.cues = c; else this.noSongCues = c; }
   private cueIndex = -1;
   /**
    * When on, a song playing on (from play(), a once cue, or release()) holds at each loop or riff
@@ -70,8 +92,8 @@ export class Looper {
   /** The cue release() let go of: not held again until the playhead has left it. */
   private released: Cue | null = null;
   private watcher: ReturnType<typeof setInterval>;
-  private worker: Worker | null = null;
-  private voicePass: VoicePass | null = null;
+  private workers = new Map<Song, Worker>();
+  private passes = new Map<Song, VoicePass>();
   /** Called whenever the score grows or the playback state changes. */
   onChange: (() => void) | null = null;
 
@@ -80,8 +102,11 @@ export class Looper {
     this.watcher = setInterval(() => this.watch(), 50);
   }
 
-  /** How far the voice pass has got (state 'off' when it isn't running for this song). */
-  get voice(): VoiceProgress { return this.voicePass?.progress ?? { state: 'off', done: 0, etaSec: null, why: '' }; }
+  /** How far the current song's voice pass has got (state 'off' when it isn't running for this song). */
+  get voice(): VoiceProgress { return this.voiceOf(this.song); }
+  voiceOf(song: Song | null): VoiceProgress { return (song && this.passes.get(song)?.progress) ?? { state: 'off', done: 0, etaSec: null, why: '' }; }
+  /** Memory the held songs take, in bytes. */
+  get bytes() { return this.songs.reduce((a, s) => a + s.bytes, 0); }
   /** How many bars past the quantise point a change may wait for a gap in the vocal (default 2; 0 never waits). */
   get voiceWaitBars() { return this.deck.voiceWaitBars; }
   set voiceWaitBars(n: number) { this.deck.voiceWaitBars = n; }
@@ -89,11 +114,18 @@ export class Looper {
   get quantise() { return this.deck.quantise; }
   set quantise(q: Quantise) { this.deck.quantise = q; }
 
-  /** Decode and analyse a song file. Resolves when the score is final; the score grows (and onChange fires) as it goes. */
+  /** Decode, analyse and select a song file (the one song an app plays). Resolves when the score is final; the score grows (and onChange fires) as it goes. */
   async load(file: File, onProgress?: (p: LoadProgress) => void): Promise<Score> {
-    this.worker?.terminate();
-    this.voicePass?.stop(); this.voicePass = null;
-    this.deck.stop();
+    return (await this.add(file, onProgress, true)).score;
+  }
+
+  /**
+   * Add a song to the rack: decoded, analysed (in a worker, the score cached) and, with the voice
+   * option, listened to, while whatever is playing plays on. With `select`, it becomes the current
+   * song as soon as it is decoded, so its score can be watched growing. Resolves when the score is
+   * final; the Song is in `songs` from the moment it is decoded.
+   */
+  async add(file: File, onProgress?: (p: LoadProgress) => void, select = false): Promise<Song> {
     onProgress?.({ stage: 'decode', done: 0, etaSec: null, cached: false });
     const data = await file.arrayBuffer();
     const tags = readTags(data, file.name);
@@ -101,22 +133,22 @@ export class Looper {
     const buffer = await this.deck.ctx.decodeAudioData(data.slice(0));
     const mono = new Float32Array(buffer.length);
     for (let c = 0; c < buffer.numberOfChannels; c++) { const d = buffer.getChannelData(c); for (let i = 0; i < d.length; i++) mono[i] += d[i] / buffer.numberOfChannels; }
-    this.buffer = buffer; this.mono = mono; this.cues = []; this.cueIndex = -1;
     const track = { title: tags.title || file.name.replace(/\.[^.]+$/, ''), artist: tags.artist, album: tags.album, ...(tags.year ? { year: tags.year } : {}), durationSec: buffer.duration, art: null, hash };
     const cached = await loadScore(hash);
+    const score = cached?.final ? cached : emptyScore(track, buffer.duration);
+    const song: Song = { name: file.name, title: track.title, hash, buffer, mono, score, cues: [], bytes: (buffer.length * buffer.numberOfChannels + mono.length) * 4 };
+    this.songs.push(song);
+    if (select) this.select(this.songs.length - 1); else this.onChange?.();
     if (cached?.final) {
-      this.setScore(cached);
       onProgress?.({ stage: 'done', done: 1, etaSec: 0, cached: true });
-      this.listen(cached);
-      return cached;
+      this.listen(song);
+      return song;
     }
-    const score = emptyScore(track, buffer.duration);
-    this.setScore(score);
     const done = () => {
       void saveScore(score);
       onProgress?.({ stage: 'done', done: 1, etaSec: 0, cached: false });
-      this.listen(score);
-      return score;
+      this.listen(song);
+      return song;
     };
     const progress = (analyzedSec: number, wallSec: number) => {
       const rate = analyzedSec / Math.max(1e-3, wallSec);
@@ -125,17 +157,18 @@ export class Looper {
     const delta = (d: ScoreDelta) => { applyDelta(score, d); this.onChange?.(); };
     const viaWorker = await new Promise<boolean>(resolve => {
       let w: Worker;
-      try { w = this.worker = new Worker(new URL('../analysis/worker.ts', import.meta.url), { type: 'module' }); }
+      try { w = new Worker(new URL('../analysis/worker.ts', import.meta.url), { type: 'module' }); }
       catch { resolve(false); return; }
+      this.workers.set(song, w);
       let heard = false;
-      w.onerror = () => { if (!heard) { w.terminate(); resolve(false); } };
+      w.onerror = () => { if (!heard) { w.terminate(); this.workers.delete(song); resolve(false); } };
       w.onmessage = (ev: MessageEvent) => {
         const m = ev.data;
         heard = true;
         if (m.type === 'progress') progress(m.analyzedSec, m.wallSec);
         else if (m.type === 'delta') {
           delta(m.delta);
-          if (score.final) { w.terminate(); this.worker = null; resolve(true); }
+          if (score.final) { w.terminate(); this.workers.delete(song); resolve(true); }
         }
       };
       const pcm = mono.slice();
@@ -144,7 +177,7 @@ export class Looper {
     if (viaWorker) return done();
     // No worker (a sandboxed page, or a bundler that can't load one): analyse here, a chunk at a time.
     const a = new Analyzer(mono, buffer.sampleRate, { chunkSec: 3 }), t0 = performance.now();
-    while (!a.finished) {
+    while (!a.finished && this.songs.includes(song)) {
       const d = a.step();
       if (d) delta(d);
       progress(a.analyzedSec, (performance.now() - t0) / 1000);
@@ -153,17 +186,34 @@ export class Looper {
     return done();
   }
 
-  /** Run the voice pass in the background, unless it is off or this score already has the whole curve. */
-  private listen(score: Score) {
-    if (!this.options.voice || !this.buffer || (score.envelopes.voice && (score.soundsFrontier ?? 0) >= score.track.durationSec)) return;
-    const pass = this.voicePass = new VoicePass(score, () => this.onChange?.());
-    void pass.start(this.buffer, this.options.voice).then(ok => { if (ok && this.score === score) void saveScore(score); });
+  /** Make songs[i] the one in the deck (stopping whatever played); play() or goTo() then start it. */
+  select(i: number) {
+    const song = this.songs[i];
+    if (!song || song === this.song) return;
+    this.song = song; this.buffer = song.buffer; this.mono = song.mono; this.score = song.score;
+    this.cueIndex = -1; this.released = null;
+    this.deck.load(song.buffer, new Cutter(song.mono, song.buffer.sampleRate), song.score);
+    this.onChange?.();
   }
 
-  private setScore(score: Score) {
-    this.score = score;
-    this.deck.load(this.buffer!, new Cutter(this.mono!, this.buffer!.sampleRate), score);
+  /** Drop songs[i] from the rack and free its memory (stopping it if it is playing). */
+  remove(i: number) {
+    const song = this.songs[i];
+    if (!song) return;
+    this.songs.splice(i, 1);
+    this.workers.get(song)?.terminate(); this.workers.delete(song);
+    this.passes.get(song)?.stop(); this.passes.delete(song);
+    if (song === this.song) { this.deck.stop(); this.song = null; this.buffer = null; this.mono = null; this.score = null; this.cueIndex = -1; }
     this.onChange?.();
+  }
+
+  /** Run the voice pass in the background, unless it is off or this score already has the whole curve. */
+  private listen(song: Song) {
+    const score = song.score;
+    if (!this.options.voice || !this.songs.includes(song) || (score.envelopes.voice && (score.soundsFrontier ?? 0) >= score.track.durationSec)) return;
+    const pass = new VoicePass(score, () => this.onChange?.());
+    this.passes.set(song, pass);
+    void pass.start(song.buffer, this.options.voice).then(ok => { if (ok && this.songs.includes(song)) void saveScore(score); });
   }
 
   /** Cues to step through: the ones marked, or, until any are, every section as a loop. */
@@ -230,7 +280,7 @@ export class Looper {
   /** Output level, 0..1 linear gain, faded over `rampSec`. */
   setVolume(gain: number, rampSec = 0) { this.deck.setVolume(gain, rampSec); }
   /** Done with this Looper: stops the worker, the audio and the AudioContext. */
-  dispose() { clearInterval(this.watcher); this.worker?.terminate(); this.worker = null; this.voicePass?.stop(); this.deck.dispose(); }
+  dispose() { clearInterval(this.watcher); for (const w of this.workers.values()) w.terminate(); for (const p of this.passes.values()) p.stop(); this.workers.clear(); this.passes.clear(); this.deck.dispose(); }
 
   /** The cue in play: the one last chosen while it is still targeted or playing, else the cue under the playhead. */
   currentCue(): number {

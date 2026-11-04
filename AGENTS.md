@@ -10,7 +10,7 @@ Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until 
 - The engine must stay small and framework-free: Alex reuses it in other apps. `Looper` (src/engine/looper.ts) is the public face; keep UI out of `src/engine`.
 - The engine is a package other apps install from this repo by commit (Mappadux does: `"vamper": "github:FrunkQ/vamper#<commit>"`). Its public API is `src/index.ts`; changing anything exported there can break them, so add rather than rename. They compile the source with stricter flags than the app, so `npm run typecheck` (which includes `tsconfig.lib.json`) must pass. Files they get are listed in `package.json` `files`.
 - Licence: MIT (since 2026-10-21; earlier versions were The Unlicense). Credit third-party code in the README. The files vendored from Gondryator keep their 'The Unlicense' header: that is the licence they came under.
-- Alex listens on the deployed site, https://vamper.starsystemx.com. You can't judge audio in a container: ship, give the commit hash, and ask which joins they hear. The debug list (Joins) gives times to talk about.
+- Alex listens on the deployed site, https://vamper.sublime.co.uk. You can't judge audio in a container: ship, give the commit hash, and ask which joins they hear. The debug list (Joins) gives times to talk about.
 
 ## Rules of the engine
 
@@ -24,7 +24,7 @@ Vamper: an RPG soundtrack looper (named after *vamping*, holding a phrase until 
 
 ## Deploy
 
-Live at https://vamper.starsystemx.com, deployed by Cloudflare Workers Builds on every push to `main` (see README). The build stamp (commit and date) in the page header shows which build is live: `npm run build`, `npx wrangler deploy`, Node 22. `npm run preview` writes `.cache/artifact.html`, a one-file build for sharing before a deploy.
+Live at https://vamper.sublime.co.uk, deployed by Cloudflare Workers Builds on every push to `main` (see README). The build stamp (commit and date) in the page header shows which build is live: `npm run build`, `npx wrangler deploy`, Node 22. `npm run preview` writes `.cache/artifact.html`, a one-file build for sharing before a deploy.
 
 ## Checks
 

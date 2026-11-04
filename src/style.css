@@ -33,6 +33,23 @@ main { padding: 10px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, e
 .drop u { color: var(--pencil); text-underline-offset: 3px; }
 #welcome p { color: var(--ink-soft); margin-top: 20px; }
 
+/* The rack: the songs held, a click apart. */
+#rack { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0 0 8px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid var(--ink-soft); border-radius: 3px; padding: 2px 4px 2px 2px; background: rgba(255, 250, 236, 0.5); }
+.chip.now { border-color: var(--pencil); box-shadow: 2px 2px 0 var(--paper-dark); background: rgba(255, 250, 236, 0.9); }
+.chip input { width: 130px; background: transparent; border: 0; border-bottom: 1px dashed var(--ink-faint); color: var(--ink); font: inherit; font-weight: 600; padding: 0 2px; }
+.chip input:focus { outline: 0; border-bottom-color: var(--pencil); }
+.chip small { color: var(--ink-soft); font-size: 12px; }
+.chip button { padding: 1px 7px; font-size: 13px; border-color: var(--ink-faint); }
+.chip .ink { width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1.5px solid var(--ink-soft); }
+.chip .ink:hover { border-color: var(--ink); }
+.chip.add { cursor: pointer; color: var(--pencil); padding: 4px 10px; border-style: dashed; font: inherit; }
+.chip.kept { border-style: dotted; color: var(--ink-soft); }
+.chip.kept span { font-weight: 600; padding: 0 4px; }
+.chip.add:hover { border-color: var(--pencil); }
+.meter { color: var(--ink-soft); font-size: 12px; margin-left: auto; }
+.meter.heavy { color: var(--pencil); }
+
 /* The picture: staff paper. */
 #progress { position: relative; height: 24px; margin-bottom: 6px; border: 1px solid var(--ink-faint); background: rgba(255, 250, 236, 0.6); }
 #bar { height: 100%; width: 0; background: rgba(79, 138, 91, 0.35); transition: width 0.2s; }

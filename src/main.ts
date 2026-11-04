@@ -1,8 +1,9 @@
 // The page: a thin layer over the Looper (src/engine/looper.ts). Drop a song; it is analysed and
 // its holds (the parts the music can wait in) are found and armed; Play starts from the top and
-// the song waits at each hold until Go on. Fine-tuning (which parts hold, riff or loop, your own
-// bars) folds away underneath. Choices are saved per song in this browser.
-import { Looper, type Cue } from './engine/looper';
+// the song waits at each hold until Go on. Several songs sit in a rack with friendly names, a click
+// apart. Fine-tuning (which parts hold, riff or loop, your own bars) folds away underneath.
+// Choices are saved per song in this browser.
+import { Looper, type Cue, type Song } from './engine/looper';
 import { voiceShare, RIFF_VOICE_MAX, type Hold } from './engine/holds';
 import { barStarts, snapToBar, type Quantise } from './engine/plan';
 import { voiceModel } from './analysis/voice';
@@ -30,28 +31,135 @@ let built = ''; // what the cues were last built from
 
 // ---- loading ----
 
-async function open(file: File) {
-  $('welcome').hidden = true; $('song').hidden = false; $('openlabel').hidden = false;
-  $('track').textContent = file.name;
-  $('progress').hidden = false;
-  await looper.load(file, p => {
-    $('bar').style.width = `${Math.round(p.done * 100)}%`;
-    $('progress-text').textContent =
-      p.stage === 'decode' ? 'Opening the song…' :
-      p.stage === 'analyse' ? `Listening for the beat and the parts of the song… ${Math.round(p.done * 100)}%${p.etaSec !== null ? `, about ${Math.ceil(p.etaSec)} s left` : ''}` :
-      p.cached ? 'Heard this one before: ready at once.' : 'Heard the whole song.';
-    if (p.stage === 'done') setTimeout(() => { if (!listening()) $('progress').hidden = true; }, 1500);
-  }).then(score => {
-    const t = score.track;
-    $('track').textContent = `${t.title}${t.artist ? ' · ' + t.artist : ''} · ${score.tempo.at(-1)?.bpm ?? '?'} bpm · ${score.beats.filter(b => b.downbeat).length} bars`;
-  });
+// Songs go into the rack one after another; the first (or any added while nothing plays) is
+// selected at once so its analysis can be watched. The rest are read while the music plays on.
+let reading = 0;
+async function addSongs(files: FileList | File[]) {
+  $('welcome').hidden = true; $('song').hidden = false;
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith('audio') && !/\.(mp3|m4a|aac|wav|flac|ogg|opus|aiff?)$/i.test(file.name)) continue;
+    reading++;
+    const name = aliasOf(file.name, null);
+    $('progress').hidden = false;
+    try {
+      const song = await looper.add(file, p => {
+        $('bar').style.width = `${Math.round(p.done * 100)}%`;
+        $('progress-text').textContent =
+          p.stage === 'decode' ? `Opening ${name}…` :
+          p.stage === 'analyse' ? `Listening to ${name} for the beat and the parts of the song… ${Math.round(p.done * 100)}%${p.etaSec !== null ? `, about ${Math.ceil(p.etaSec)} s left` : ''}` :
+          p.cached ? `Heard ${name} before: ready at once.` : `Heard the whole of ${name}.`;
+      }, looper.songs.length === 0 || !looper.deck.playing);
+      void keep(file, song.hash);
+    } catch (e) { $('progress-text').textContent = `Couldn't open ${name}: ${(e as Error).message}`; }
+    reading--;
+    renderRack();
+  }
+  setTimeout(() => { if (!listening() && !reading) $('progress').hidden = true; }, 1500);
 }
-looper.onChange = () => { if (looper.score && looper.score.track.hash !== hash) { hash = looper.score.track.hash; prefs = loadPrefs(hash); ui.selection = null; built = ''; } };
+looper.onChange = () => {
+  if (looper.score && looper.score.track.hash !== hash) { hash = looper.score.track.hash; prefs = loadPrefs(hash); ui.selection = null; built = ''; }
+  const t = looper.score?.track;
+  $('track').textContent = t ? `${looper.song ? aliasOf(looper.song.name, looper.song) : t.title}${t.artist ? ' · ' + t.artist : ''} · ${looper.score!.tempo.at(-1)?.bpm ?? '?'} bpm · ${looper.score!.beats.filter(b => b.downbeat).length} bars` : 'Music that waits for the game.';
+  renderRack();
+};
 
-for (const id of ['file', 'file0']) $<HTMLInputElement>(id).onchange = e => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void open(f); };
+$<HTMLInputElement>('file0').onchange = e => { const f = (e.target as HTMLInputElement).files; if (f?.length) void addSongs(f); (e.target as HTMLInputElement).value = ''; };
 window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drag'); });
 window.addEventListener('dragleave', () => document.body.classList.remove('drag'));
-window.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drag'); const f = e.dataTransfer?.files[0]; if (f) void open(f); });
+window.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drag'); const f = e.dataTransfer?.files; if (f?.length) void addSongs(f); });
+
+// ---- the rack is kept on disk (the browser's own storage), so it is back on the next visit ----
+
+interface Kept { hash: string; name: string; type: string; data: Blob; added: number }
+let kept: Kept[] = [];
+function rackDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open('vamper-rack', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('songs', { keyPath: 'hash' });
+    r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
+  });
+}
+async function keep(file: File, hash: string) {
+  try {
+    const db = await rackDb(), tx = db.transaction('songs', 'readwrite');
+    tx.objectStore('songs').put({ hash, name: file.name, type: file.type, data: file, added: Date.now() } satisfies Kept);
+    await new Promise(r => { tx.oncomplete = r; tx.onerror = r; });
+    await listKept();
+  } catch { /* storage off: the rack lasts this visit only */ }
+}
+async function forget(hash: string) {
+  try { const db = await rackDb(), tx = db.transaction('songs', 'readwrite'); tx.objectStore('songs').delete(hash); await new Promise(r => { tx.oncomplete = r; tx.onerror = r; }); await listKept(); } catch { /* fine */ }
+}
+async function listKept() {
+  try {
+    const db = await rackDb(), req = db.transaction('songs').objectStore('songs').getAll();
+    kept = await new Promise<Kept[]>((resolve, reject) => { req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
+    kept.sort((a, b) => a.added - b.added);
+  } catch { kept = []; }
+  rackShown = ''; renderRack();
+}
+const bringBack = (k: Kept) => addSongs([new File([k.data], k.name, { type: k.type })]);
+void listKept().then(() => { if (kept.length) { $('welcome').hidden = true; $('song').hidden = false; $('readout').textContent = `Your songs from last time are in the rack: press ▶ on one to bring it back${kept.length > 1 ? ', or Bring them all back' : ''}.`; } });
+
+// ---- the rack: the songs held, with friendly names, a click apart ----
+
+function aliasOf(fileName: string, song: Song | null): string {
+  try { const a = song && localStorage.getItem('alias:' + song.hash); if (a) return a; } catch { /* fine */ }
+  return song?.title || fileName.replace(/\.[^.]+$/, '');
+}
+/** Inks to tag a song by its feel: a fight, a forest, the sea, something eerie… cycled with the swatch, kept per song. */
+const INKS = ['', '#b5362b', '#c77a1f', '#4f8a5b', '#3f6e9c', '#6e4f9c', '#555'];
+const inkOf = (s: Song) => { try { return localStorage.getItem('ink:' + s.hash) ?? ''; } catch { return ''; } };
+let rackShown = '';
+function renderRack() {
+  const key = looper.songs.map(s => `${s.hash}:${s.score.final}:${looper.voiceOf(s).state}:${inkOf(s)}`).join('|') + `:${looper.songs.indexOf(looper.song!)}:${reading}:` + kept.map(k => k.hash).join('|');
+  if (key === rackShown) return;
+  rackShown = key;
+  const box = $('rack');
+  box.innerHTML = '';
+  looper.songs.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'chip' + (s === looper.song ? ' now' : '');
+    const ink = inkOf(s);
+    if (ink) { el.style.borderLeftColor = ink; el.style.borderLeftWidth = '8px'; el.style.borderLeftStyle = 'solid'; }
+    const state = !s.score.final ? ' · reading…' : looper.voiceOf(s).state === 'running' || looper.voiceOf(s).state === 'loading' ? ' · listening for singing…' : '';
+    el.innerHTML = `<button data-ink class="ink" title="Colour it by its feel: a fight, a forest, the sea, something eerie…" style="background:${ink || 'transparent'}"></button><button data-play title="Play this song from the top">▶</button><input value="${aliasOf(s.name, s).replace(/"/g, '&quot;')}" title="Give the song a name for the game: Tavern, Ambush, Court…" /><small>${Math.round(s.buffer.duration / 60)} min${state}</small><button data-del title="Take it out of the rack">✕</button>`;
+    el.querySelector<HTMLButtonElement>('[data-play]')!.onclick = () => { looper.select(i); looper.play(0); };
+    el.querySelector<HTMLButtonElement>('[data-ink]')!.onclick = () => { try { localStorage.setItem('ink:' + s.hash, INKS[(INKS.indexOf(ink) + 1) % INKS.length]); } catch { /* fine */ } rackShown = ''; renderRack(); };
+    el.querySelector('input')!.onchange = e => { try { localStorage.setItem('alias:' + s.hash, (e.target as HTMLInputElement).value.trim()); } catch { /* fine */ } rackShown = ''; looper.onChange?.(); };
+    el.querySelector<HTMLButtonElement>('[data-del]')!.onclick = () => { looper.remove(i); void forget(s.hash); if (!looper.song && looper.songs.length) looper.select(Math.min(i, looper.songs.length - 1)); if (!looper.songs.length && kept.length <= 1) { $('song').hidden = true; $('welcome').hidden = false; } };
+    box.append(el);
+  });
+  // Songs kept from last time, not brought back yet: dim, a ▶ away.
+  const waiting = kept.filter(k => !looper.songs.some(s => s.hash === k.hash));
+  for (const k of waiting) {
+    const el = document.createElement('div');
+    el.className = 'chip kept';
+    let alias = k.name.replace(/\.[^.]+$/, '');
+    try { alias = localStorage.getItem('alias:' + k.hash) || alias; } catch { /* fine */ }
+    const ink = (() => { try { return localStorage.getItem('ink:' + k.hash) ?? ''; } catch { return ''; } })();
+    if (ink) { el.style.borderLeftColor = ink; el.style.borderLeftWidth = '8px'; el.style.borderLeftStyle = 'solid'; }
+    el.innerHTML = `<button data-play title="Bring this song back and play it">▶</button><span>${alias.replace(/</g, '&lt;')}</span><small>from last time</small><button data-del title="Forget it">✕</button>`;
+    el.querySelector<HTMLButtonElement>('[data-play]')!.onclick = () => { void bringBack(k).then(() => { const i = looper.songs.findIndex(s => s.hash === k.hash); if (i >= 0) { looper.select(i); looper.play(0); } }); };
+    el.querySelector<HTMLButtonElement>('[data-del]')!.onclick = () => { void forget(k.hash); };
+    box.append(el);
+  }
+  if (waiting.length > 1) {
+    const all = document.createElement('button');
+    all.className = 'chip add'; all.textContent = 'Bring them all back';
+    all.onclick = () => { void addSongs(waiting.map(k => new File([k.data], k.name, { type: k.type }))); };
+    box.append(all);
+  }
+  const add = document.createElement('label');
+  add.className = 'chip add';
+  add.innerHTML = '+ Add a song<input id="file" type="file" accept="audio/*" multiple hidden />';
+  add.querySelector('input')!.onchange = e => { const f = (e.target as HTMLInputElement).files; if (f?.length) void addSongs(f); (e.target as HTMLInputElement).value = ''; };
+  box.append(add);
+  const mb = looper.bytes / 2 ** 20, meter = document.createElement('small');
+  meter.className = 'meter' + (mb > 1200 ? ' heavy' : '');
+  meter.textContent = `${looper.songs.length} ${looper.songs.length === 1 ? 'song' : 'songs'} · ${mb < 1000 ? Math.round(mb) + ' MB' : (mb / 1024).toFixed(1) + ' GB'} in memory${mb > 1200 ? ' (getting heavy: take some out when done with them)' : ''}`;
+  box.append(meter);
+}
 
 // The voice pass runs after the analysis, while the song is already playable: same progress bar.
 const listening = () => looper.voice.state === 'loading' || looper.voice.state === 'running';
@@ -156,6 +264,8 @@ function addCue() {
 const armed = () => looper.cues.map((c, i) => ({ c, i })).filter(x => x.c.mode !== 'once' && x.c.hold !== false);
 
 const togglePlay = () => { if (looper.deck.playing) looper.stop(); else if (looper.score) looper.play(ui.selection?.[0] ?? 0); };
+/** Pause freezes the music where it is (the phone rings); resume carries on from the same spot. */
+const togglePause = () => { if (!looper.deck.playing) { togglePlay(); return; } if (looper.paused) looper.resume(); else looper.pause(); };
 /** Go on: let a held part go (the song plays on and waits at the next hold); when already playing on, jump to the next hold. */
 function goOn() {
   const st = looper.state();
@@ -199,6 +309,7 @@ canvas.onmouseup = e => {
 // ---- buttons and keys ----
 
 $('play').onclick = togglePlay;
+$('pause').onclick = togglePause;
 $('prev').onclick = goBack;
 $('next').onclick = goOn;
 $('loop').onclick = () => { if (ui.selection) looper.loop(...ui.selection); };
@@ -207,7 +318,7 @@ $<HTMLSelectElement>('quantise').onchange = e => { looper.quantise = (e.target a
 $<HTMLInputElement>('zoom').oninput = e => { canvas.style.width = `${Number((e.target as HTMLInputElement).value) * 100}%`; };
 window.addEventListener('keydown', e => {
   if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return;
-  if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  if (e.key === ' ') { e.preventDefault(); togglePause(); }
   else if (e.key === 'ArrowRight' || e.key === 'Enter') goOn();
   else if (e.key === 'ArrowLeft') goBack();
   else if (e.key === 'l') { if (ui.selection) looper.loop(...ui.selection); }
@@ -223,13 +334,19 @@ function frame() {
   draw(canvas, looper, ui);
   const st = looper.state(), score = looper.score;
   $('play').textContent = st.playing ? '■ Stop' : '▶ Play';
+  const paused = st.playing && looper.paused;
+  $('pause').textContent = paused ? '▶ Resume' : '⏸ Pause';
+  ($('pause') as HTMLButtonElement).disabled = !st.playing;
   ($('addcue') as HTMLButtonElement).disabled = ($('loop') as HTMLButtonElement).disabled = !ui.selection;
   $('next').textContent = st.loop ? 'Go on ▶' : 'Next hold ▶';
   if (score) {
     const cue = looper.cues[st.cue], list = armed(), nextHold = list.find(x => x.c.from > st.position + 0.5);
     const does = (c: Cue) => c.mode === 'riff' ? 'riffing on it' : 'repeating it';
     let text: string, hint: string;
-    if (!st.playing) {
+    if (paused) {
+      text = `Paused at bar <b>${st.bar}</b>`;
+      hint = 'Press Resume (or Space) and the music carries on from exactly here.';
+    } else if (!st.playing) {
       text = !score.final ? 'Still listening to the song. You can press Play already.' :
         list.length ? `Ready. The song will hold in <b>${list.length}</b> ${list.length === 1 ? 'place' : 'places'}: ${list.map(x => `<b>${x.c.name}</b> (${x.c.mode})`).join(', ')}.` : 'Ready. No part is set to hold, so the song will just play through.';
       hint = 'Press Play: the song starts from the top and, when it reaches a coloured part, keeps playing that part until you press Go on. Or click a coloured part to hear it straight away.';

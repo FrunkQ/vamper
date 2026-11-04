@@ -163,6 +163,8 @@ In play, **Play** starts from the top; when the song reaches a hold it keeps pla
 
 Other apps get the same from the engine: `looper.holds()` finds the holds, and `looper.autoHold` makes a song playing on wait at each loop or riff cue it reaches.
 
+**The rack.** A session has more than one song: the tavern, the ambush, the court. Each song added is decoded and analysed while the music plays on, sits in the rack with a name you give it and a colour, and starts with one click (from the top, waiting at its holds). Every decoded song costs memory, about 60 MB for four minutes, so the rack says how much it holds. The page also keeps the song files in the browser's own storage, so on the next visit the rack is there, each song a click from being read again (the analysis is cached, so that takes a second). Nothing leaves the machine: it is the browser's storage, not a server.
+
 ## Riffing: vamping instead of looping
 
 A loop is a tape: the same eight bars, in the same order, for as long as the scene lasts. Half an hour of exploring and the players can hum the wrap. A band vamping does something else: it stays in the same groove but goes round it differently, repeats a phrase, skips back to the turnaround, comes back to the top. A **riff** cue does that with the bars of its passage.
@@ -284,7 +286,7 @@ The Vamper page is a thin layer: everything that hears, cuts and plays lives in 
 ```mermaid
 flowchart LR
     V[FrunkQ/vamper<br/>tested here: join test, listening] -->|npm install<br/>github:FrunkQ/vamper#commit| M[Mappadux<br/>Soundtracks panel]
-    V --> W[vamper.starsystemx.com<br/>the Vamper page]
+    V --> W[vamper.sublime.co.uk<br/>the Vamper page]
     M -->|slots on one song| C[Cues]
     C --> L[Looper.goTo<br/>changes on the next bar]
 ```

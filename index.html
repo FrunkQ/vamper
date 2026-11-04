@@ -15,7 +15,6 @@
   <header>
     <h1>Vamper</h1>
     <span id="track">Music that waits for the game.</span>
-    <label class="file" id="openlabel" hidden>open another<input id="file" type="file" accept="audio/*" hidden /></label>
     <button id="install" hidden>Install app</button>
     <span id="build"></span>
   </header>
@@ -24,16 +23,18 @@
       <label class="drop">
         <strong>Drop a song here</strong>
         <span>or <u>choose one</u> from your computer</span>
-        <input id="file0" type="file" accept="audio/*" hidden />
+        <input id="file0" type="file" accept="audio/*" multiple hidden />
       </label>
-      <p>Vamper reads the song, finds the parts it can wait in, and plays it so the music <b>holds</b> there until you say go. The join is on the beat and you shouldn't hear it. Everything happens in your browser: the song never leaves your computer.</p>
+      <p>Vamper reads the song, finds the parts it can wait in, and plays it so the music <b>holds</b> there until you say go. The join is on the beat and you shouldn't hear it. Add a few songs and jump between them with a click. Everything happens in your browser: the songs never leave your computer.</p>
     </section>
     <section id="song" hidden>
+      <div id="rack"></div>
       <div id="progress" hidden><div id="bar"></div><span id="progress-text"></span></div>
       <div id="lane"><canvas id="view"></canvas></div>
       <div id="legend"><i class="riff"></i> riff: the part plays on in a fresh order &nbsp; <i class="loop"></i> loop: the part repeats &nbsp; <i class="voice"></i> singing or talking &nbsp; <i class="dim"></i> the song plays through</div>
       <div id="controls">
-        <button id="play" class="big" title="Space">▶ Play</button>
+        <button id="play" class="big">▶ Play</button>
+        <button id="pause" class="big" title="Space">⏸ Pause</button>
         <button id="prev" class="big" title="Left arrow">◀ Back</button>
         <button id="next" class="big" title="Right arrow or Enter">Go on ▶</button>
       </div>
@@ -41,7 +42,7 @@
       <p id="hint" class="help"></p>
       <details id="tune" open>
         <summary>Fine-tune</summary>
-        <p class="help">Each part the song waits in is listed below. Switch a part off to let the song play through it, make it riff or loop, roll another riff, or hear it now. To wait in some other bars, drag across the waveform and press <b>Add</b>. Keys: <kbd>Space</kbd> play or stop, <kbd>→</kbd> go on, <kbd>←</kbd> back, <kbd>1</kbd>–<kbd>9</kbd> jump to a part, <kbd>A</kbd> add the selected bars.</p>
+        <p class="help">Each part the song waits in is listed below. Switch a part off to let the song play through it, make it riff or loop, roll another riff, or hear it now. To wait in some other bars, drag across the waveform and press <b>Add</b>. Keys: <kbd>Space</kbd> pause and resume (or play), <kbd>→</kbd> go on, <kbd>←</kbd> back, <kbd>1</kbd>–<kbd>9</kbd> jump to a part, <kbd>A</kbd> add the selected bars.</p>
         <div id="cues"></div>
         <div id="more">
           <button id="addcue" disabled>+ Add the selected bars</button>
