@@ -4,5 +4,6 @@ export { Looper, type Cue, type LoadProgress, type LooperOptions, type LooperSta
 export { voiceModel, type VoiceModel, type VoiceProgress } from './analysis/voice';
 export type { JoinLog } from './engine/deck';
 export { Riff, barSimilarity, seedOf, type RiffJump, type RiffOptions, type RiffRun } from './engine/riff';
+export { findHolds, voiceShare, RIFF_VOICE_MAX, WRAP_MAX_DB, type Hold, type HoldTools } from './engine/holds';
 export { barSpan, barStarts, barIndexAt, lastBar, snapToBar, sectionNames, voiceAt, voiceAcross, type Quantise } from './engine/plan';
 export type { BarFeature, Score, Section } from './score/types';

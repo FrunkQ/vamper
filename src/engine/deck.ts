@@ -40,7 +40,8 @@ export class Deck {
   readonly ctx = new AudioContext({ latencyHint: 'interactive' });
   private out = this.ctx.createGain();
   private buffer: AudioBuffer | null = null;
-  private cutter: Cutter | null = null;
+  /** The song's cutter (cut points and join scores), once loaded. */
+  cutter: Cutter | null = null;
   private score: Score | null = null;
   private voices: Voice[] = [];
   /** The passage being looped, as grid times [first downbeat, downbeat after the last bar], or null to play on. */

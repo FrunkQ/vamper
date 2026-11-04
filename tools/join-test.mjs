@@ -9,14 +9,16 @@
 // Then it riffs on eight bars of each track (src/engine/riff.ts) for 32 bars, checks the walk keeps
 // its rules (jumps happen, mostly in order, never the same jump twice running, the place in the
 // phrase kept, the same seed replays it, a sung line stops jumps), and measures those joins too.
+// Last it finds the holds of each track (src/engine/holds.ts): whole bars inside a section, a riff
+// where there are jumps, a loop everywhere once a sung line covers the song, one suggested per group.
 //   node tools/join-test.mjs            (exits 1 if any join fails)
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { buildSync } from 'esbuild';
 
 fs.mkdirSync('.cache', { recursive: true });
-buildSync({ stdin: { contents: "export * from './src/analysis/analyzer'; export * from './src/engine/cuts'; export * from './src/engine/plan'; export * from './src/engine/riff';", resolveDir: '.', loader: 'ts' }, bundle: true, format: 'esm', platform: 'node', outfile: '.cache/engine.mjs', logLevel: 'error' });
-const { Analyzer, Cutter, Riff, render, barStarts, followingSection, nextCut } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
+buildSync({ stdin: { contents: "export * from './src/analysis/analyzer'; export * from './src/engine/cuts'; export * from './src/engine/plan'; export * from './src/engine/riff'; export * from './src/engine/holds';", resolveDir: '.', loader: 'ts' }, bundle: true, format: 'esm', platform: 'node', outfile: '.cache/engine.mjs', logLevel: 'error' });
+const { Analyzer, Cutter, Riff, render, barStarts, followingSection, nextCut, findHolds } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
 
 const TRACKS = ['test-124', 'test-100', 'test-120'];
 if (TRACKS.some(t => !fs.existsSync(`test-tracks/${t}.wav`))) execFileSync('node', ['tools/make-test-tracks.mjs'], { stdio: 'inherit' });
@@ -42,8 +44,8 @@ let failures = 0;
 for (const name of TRACKS) {
   const { x, sr } = readWav(`test-tracks/${name}.wav`);
   const a = new Analyzer(x, sr, { chunkSec: 4 });
-  const score = { beats: [], sections: [], phrases: [], bars: [] };
-  while (!a.finished) { const d = a.step(); if (d) for (const k of Object.keys(score)) score[k].push(...d[k]); }
+  const score = { beats: [], sections: [], phrases: [], bars: [], envelopes: {}, soundsFrontier: 0, final: true, track: { durationSec: x.length / sr } };
+  while (!a.finished) { const d = a.step(); if (d) for (const k of ['beats', 'sections', 'phrases', 'bars']) score[k].push(...d[k]); }
   const bars = barStarts(score), cut = new Cutter(x, sr), X = cut.xfade;
 
   // The session: the first section with drums and at least 8 bars, looped 4 bars at a time.
@@ -65,7 +67,7 @@ for (const name of TRACKS) {
   console.log(`  (loop bars ${i0 + 1}-${i0 + 4} of "${sec.label}", advance to "${next.label}" at bar ${nb + 1})`);
 
   // A riff on eight bars from the same place, 32 bars long, as the deck plays it: one segment per run.
-  const riffScore = { ...score, envelopes: {}, soundsFrontier: 0 };
+  const riffScore = score;
   const P = [bars[i0], bars[i0 + 8]], db = (o, i) => cut.score(cut.join(o), cut.join(i)).db;
   const walk = (seed, sc = riffScore) => {
     const r = new Riff(sc, P[0], P[1], { seed, joinDb: db }), runs = [];
@@ -85,7 +87,8 @@ for (const name of TRACKS) {
     ['it jumps at least once in 32 bars', jumps.length > 0],
     ['mostly in order (at least half the bars follow the one before)', r.path.filter((b, k) => k && b === r.path[k - 1] + 1).length >= 16],
     ['never the same jump twice running', jumps.every((j, k) => !k || j.from !== jumps[k - 1].from || j.to !== jumps[k - 1].to)],
-    ['every jump keeps the place in the phrase', jumps.every(j => ((j.to - j.from - 1) % r.unit + r.unit) % r.unit === 0)],
+    ['every jump keeps the place in the phrase', jumps.every(j => r.place(j.to) === r.place(j.from + 1))],
+    ['a jump at a phrase line lands on a phrase line', jumps.every(j => r.place(j.from + 1) !== 0 || score.phrases.some(p => Math.abs(p.t - r.times[j.to]) < 1e-6))],
     ['the same seed replays the same riff', walk(7).r.path.join(' ') === path],
   ];
   // A sung line over the whole passage: no jumps, only the loop's own wrap.
@@ -93,6 +96,21 @@ for (const name of TRACKS) {
   rules.push(['a sung line everywhere stops every jump', walk(7, sung).runs.every(u => !u.jump)]);
   for (const [what, ok] of rules) { if (!ok) failures++; console.log(`  ${what}: ${ok ? 'ok' : 'FAIL'}`); }
   measure(name + '-riff', x, sr, bars, cut, riffPlan);
+
+  // The holds: what the page arms when a song is dropped in.
+  const tools = { riff: (a, b) => new Riff(score, a, b, { joinDb: db }), joinDb: db };
+  const holds = findHolds(score, tools), sungHolds = findHolds(sung, tools);
+  console.log(`\n${name} holds: ${holds.map(h => `${h.name} ${h.mode}${h.suggested ? '*' : ''} bars ${h.bars}${h.jumps ? ' jumps ' + h.jumps : ''}${h.rough ? ' rough' : ''}`).join(', ')}`);
+  const whole = t => bars.some(b => Math.abs(b - t) < 1e-6);
+  const holdRules = [
+    ['there are holds', holds.length > 0],
+    ['every hold is whole bars inside its section', holds.every(h => whole(h.from) && whole(h.to) && h.from === score.sections[h.section].t && h.to <= (score.sections[h.section + 1]?.t ?? Infinity) + 1e-6 && h.bars >= 4)],
+    ['a riff hold has jumps, a loop hold none', holds.every(h => (h.mode === 'riff') === h.jumps > 0)],
+    ['some hold riffs', holds.some(h => h.mode === 'riff')],
+    ['one suggested hold per group', [...new Set(holds.map(h => score.sections[h.section].group))].every(g => holds.filter(h => h.suggested && score.sections[h.section].group === g).length === 1)],
+    ['a sung line everywhere makes every hold a loop', sungHolds.every(h => h.mode === 'loop' && h.voice === 1)],
+  ];
+  for (const [what, ok] of holdRules) { if (!ok) failures++; console.log(`  ${what}: ${ok ? 'ok' : 'FAIL'}`); }
 }
 
 /** Render a plan, write its WAV, and measure every join in it (click, level, groove). */

@@ -134,11 +134,11 @@ flowchart LR
 
 **How it changes a cut.** A cut at a bar line counts as splitting a line when the voice curve is above 0.3 on **both** sides of it (0.3 s before and after), so a line that ends just before the bar, or starts on it, is fine. When the next quantise point would split a line, the change may wait **up to two more bars** for one that doesn't. If every bar line in reach splits a line, it takes the least-bad one, counting a phrase start as a little better (a new vocal line usually starts on one). The readout says "(waiting for a gap in the vocal)" when that happens.
 
-**What it shows.** The voice curve is drawn in pink along the bottom of the waveform, so you can see why a change waited. Every join in **Joins (debug)** lists its `voice` (the worse of its two sides; `?` until the pass has listened there), with 🎤 when it cuts a vocal, and a pink mark under the waveform. A loop cue whose wrap splits a line says "🎤 wrap cuts a vocal" in the cue list, because that will be heard on every pass: move its ends by a bar.
+**What it shows.** Singing and talking are washed pink over the waveform, so you can see why a part loops rather than riffs and why a change waited. Every join in **Joins (debug)** lists its `voice` (the worse of its two sides; `?` until the pass has listened there), with 🎤 when it cuts a vocal, and a pink mark under the waveform. A loop cue whose wrap splits a line says "🎤 wrap cuts a vocal" in the cue list, because that will be heard on every pass: move its ends by a bar.
 
 What it can't do: it hears *a voice*, not words, so it can't find the end of a sentence, and a breath between two words inside one window looks like singing throughout. With windows of about a second, it is a guide for which bar to cut at, not for where inside the bar. On instrumental music it hears nothing, and changes land exactly as before.
 
-## Cues: what the music should do
+## Cues and holds: what the music should do
 
 A **cue** is a passage the music can sit in: a name, a start bar, an end bar, and a mode.
 
@@ -146,9 +146,22 @@ A **cue** is a passage the music can sit in: a name, a start bar, an end bar, an
 - **Riff** stays in the passage too, but plays its bars in a varied order, like a band vamping (see [Riffing](#riffing-vamping-instead-of-looping)).
 - **Once** plays from the passage's start and carries on through the song.
 
-Until you make your own cues, every section is a cue (a loop), so a song is playable the moment it is analysed. You make a cue by dragging across bars and pressing **+ Cue**. Cues are saved in your browser, keyed by the song file's fingerprint, so they come back when you open the same file again.
+The Vamper page makes the cues itself, so a song works the moment it is analysed: every section of four bars or more becomes a **hold**, a part the song waits in. It **riffs** when its bars are alike enough to jump between and nobody is singing or talking in it (a riff cuts between bars all over the part, and the [voice pass](#listening-for-voices) can only tell *that* someone sings, not where a word ends, so a sung part is left whole); otherwise it **loops**. A loop's wrap is checked too: if it would cut a sung line, the loop is shortened to whole phrases whose wrap is clear. One hold per kind of part (the chorus that riffs over the one that doesn't) is switched on; the rest are there to switch on.
 
-In play you orchestrate: **Next** and **Back** step through the cues in order, number keys jump straight to one, and clicking a block on the strip goes there.
+```mermaid
+flowchart LR
+    S[Each section of 4+ bars] --> V{Sung or spoken<br/>over a fifth of it?}
+    V -- no --> J{Bars alike enough<br/>to jump between?}
+    J -- yes --> R[⤨ Riff]
+    J -- no --> L[⟲ Loop]
+    V -- yes --> L
+    L --> W{Wrap cuts<br/>a sung line?}
+    W -- yes --> SH[Shorten to whole phrases<br/>with a clear wrap]
+```
+
+In play, **Play** starts from the top; when the song reaches a hold it keeps playing that part, and **Go on** lets it carry on to the next. **Back** returns to the part before, number keys and clicks go straight to a part, and the fine-tune list switches holds on and off, flips riff and loop, or adds your own bars (drag across the waveform). Choices are saved in your browser, keyed by the song file's fingerprint, so they come back when you open the same file again.
+
+Other apps get the same from the engine: `looper.holds()` finds the holds, and `looper.autoHold` makes a song playing on wait at each loop or riff cue it reaches.
 
 ## Riffing: vamping instead of looping
 
@@ -163,11 +176,11 @@ flowchart LR
     W --> D[Deck plays runs of bars<br/>with the same seamless joins]
 ```
 
-**Which bar can follow which.** Every bar can be followed by the next one (and the last by the first, as in a loop). Vamper also adds a **jump** from bar *i* to bar *j* when bar *j* sounds like the bar that would have come next, and the bar before *j* sounds like bar *i*: same drum pattern, same harmony, same bass notes, about as loud. Then the music lands where it might have been anyway. A jump also has to keep the place in the phrase (the third bar of a phrase only jumps to a third bar), so the music still breathes in fours, and the cut itself must not step in loudness by more than 3 dB, the same test that flags a rough loop wrap.
+**Which bar can follow which.** Every bar can be followed by the next one (and the last by the first, as in a loop). Vamper also adds a **jump** from bar *i* to bar *j* when bar *j* sounds like the bar that would have come next, and the bar before *j* sounds like bar *i*: same drum pattern, same harmony, same bass notes, about as loud. Then the music lands where it might have been anyway. A jump also has to keep the place in the phrase (the third bar of a phrase only jumps to a third bar, counted in the song's own phrases, so a jump made at a phrase line lands on a phrase line), so the music still breathes in fours, and the cut itself must not step in loudness by more than 3 dB, the same test that flags a rough loop wrap.
 
 **How it walks.** Mostly in order. Every three to five bars it takes a jump if one fits, preferably where a phrase starts. It never takes the same jump twice running. It never jumps out of, or into, the middle of a sung line (the [voice curve](#listening-for-voices)). The choice is random but **seeded**: the same cue riffs the same way every time, from the song's fingerprint and where the cue starts, and the 🎲 button picks another riff for that cue.
 
-**What you see.** The cue list says how many jumps the passage has ("8 jumps"), or that its bars are too different to jump between, in which case it plays as a plain loop. While it riffs, the readout lists the bars ("riffing ⤨ bars 13 14 11 12 13 14 15 16"), each jump draws a green arc over the waveform from where it left to where it landed, and **Joins (debug)** lists the whole path and every jump with its bars, how alike they are and the loudness step of its cut. Talk about a jump that sounds wrong by its bars ("12 → 9 stumbles").
+**What you see.** The fine-tune list says how many places a part can jump ("riffs, 8 places it can jump"), or why it repeats instead. While it riffs, the readout lists the bars ("holding in A, riffing on it · bars so far: 13 14 11 12 13 14 15 16"), each jump draws a green arc over the waveform from the phrase mark it left to the one it landed on, and **Joins (debug)** lists the whole path and every jump with its bars, how alike they are and the loudness step of its cut. Talk about a jump that sounds wrong by its bars ("12 → 9 stumbles").
 
 Every jump is a join like any other, made with the same five steps below, so it should be as inaudible as a loop's wrap. What it can't know: whether a jump makes musical sense beyond sounding alike, such as jumping out of a guitar solo's build. That is what the listening tests are for.
 
@@ -258,7 +271,7 @@ flowchart LR
     M --> C3[Groove: the bar across the join<br/>matches the source within 3 ms]
 ```
 
-All 12 joins pass. It then riffs on eight bars of each track for 32 bars and checks the walk: there are jumps, it takes some, at least half the bars follow the one before, no jump twice running, every jump keeps the place in the phrase, the same seed gives the same riff, and a sung line over the whole passage stops every jump. The riff's 24 joins are measured like the others and pass. It also checks the voice-aware choice of bar on a made-up voice curve: a line across the next two bar lines makes a change wait for the third, no voice means no wait, and waiting can be turned off. The test does catch real mistakes: when a cut was deliberately moved by 4.5 ms, every join failed the groove check. It can't tell you how a join on a real song sounds. For that, listen and report the times from the **Joins (debug)** list ("change at 20.318 s clicks").
+All 12 joins pass. It then riffs on eight bars of each track for 32 bars and checks the walk: there are jumps, it takes some, at least half the bars follow the one before, no jump twice running, every jump keeps the place in the phrase (and a jump at a phrase line lands on one), the same seed gives the same riff, and a sung line over the whole passage stops every jump. It also finds each track's holds and checks they are whole bars inside a section, that a riff hold has jumps and a loop hold none, that one per group is suggested, and that a sung line everywhere turns them all into loops. The riff's 24 joins are measured like the others and pass. It also checks the voice-aware choice of bar on a made-up voice curve: a line across the next two bar lines makes a change wait for the third, no voice means no wait, and waiting can be turned off. The test does catch real mistakes: when a cut was deliberately moved by 4.5 ms, every join failed the groove check. It can't tell you how a join on a real song sounds. For that, listen and report the times from the **Joins (debug)** list ("change at 20.318 s clicks").
 
 ## The installable app
 

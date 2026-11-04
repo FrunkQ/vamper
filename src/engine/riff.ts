@@ -4,8 +4,8 @@
 // bar that would have followed i (and j's bar before sounds like i), and the cut is not a loudness
 // step. A seeded walk then picks the bars: mostly in order, a jump every few bars, preferably where
 // a phrase starts, never the same jump twice running, never out of or into a sung line, and always
-// to the same place in a phrase, so the music keeps breathing in fours. Pure, so the deck and the
-// Node join test share it.
+// to the same place in a phrase (the song's own phrases, from the score), so the music keeps
+// breathing in fours. Pure, so the deck and the Node join test share it.
 import type { BarFeature, Score } from '../score/types';
 import { voiceAcross, VOICE_QUIET } from './plan';
 
@@ -61,8 +61,10 @@ export class Riff {
   readonly times: number[];
   /** Possible jumps out of each bar (index = the bar played before the jump). */
   readonly jumps: RiffJump[][];
-  /** Bars a jump keeps the place in: 4 (whole phrases) when the passage is whole phrases of at least 8 bars, 2 for other even lengths, else 1. */
+  /** Fallback when the score has no phrases: bars a jump keeps the place in, 4 when the passage is whole phrases of at least 8 bars, 2 for other even lengths, else 1. */
   readonly unit: number;
+  /** Each bar's place in its phrase (0 = a phrase start), from the song's phrases; see place(). */
+  private places: number[];
   /** Song bar numbers (1-based) of the bars chosen so far, the latest last (up to 64), for the readout. */
   readonly path: number[] = [];
   private rng: () => number;
@@ -79,6 +81,10 @@ export class Riff {
     const n = this.bars;
     this.firstBar = downbeats.filter(t => t < from - 0.02).length + 1;
     this.unit = n >= 8 && n % 4 === 0 ? 4 : n >= 4 && n % 2 === 0 ? 2 : 1;
+    this.places = this.times.slice(0, n).map((_, k) => {
+      const bar = this.firstBar + k, p = score.phrases.find(x => bar >= x.bar && bar < x.bar + x.bars);
+      return p ? bar - p.bar : k % this.unit;
+    });
     this.rng = seeded(opts.seed ?? 1);
     this.every = Math.max(2, opts.jumpEvery ?? 4);
     this.gap = this.every;
@@ -87,7 +93,7 @@ export class Riff {
     this.jumps = this.times.slice(0, n).map((_, i) => {
       const out: RiffJump[] = [], nat = (i + 1) % n;
       for (let j = 0; j < n; j++) {
-        if (j === nat || ((j - nat) % this.unit + this.unit) % this.unit !== 0) continue;
+        if (j === nat || this.places[j] !== this.places[nat]) continue;
         // Bar j must sound like the bar it replaces, and the bar before j like bar i: the jump then
         // lands in the same musical place.
         const fi = feats[i], fn = feats[nat], fj = feats[j], fp = feats[(j - 1 + n) % n];
@@ -108,6 +114,8 @@ export class Riff {
   }
 
   get bars() { return this.times.length - 1; }
+  /** Bar k's place in its phrase, 0 for a phrase start: a jump only lands on a bar with the same place as the one it replaces. */
+  place(k: number) { return this.places[((k % this.bars) + this.bars) % this.bars]; }
   /** How many jumps the graph has (before the voice curve rules any out). */
   get jumpCount() { return this.jumps.reduce((a, js) => a + js.length, 0); }
   /** The bar (0-based in the passage) playing at song time t, or -1 outside it. */
@@ -144,7 +152,7 @@ export class Riff {
   private after(i: number): { bar: number; jump: RiffJump | null } {
     const n = this.bars, nat = (i + 1) % n;
     this.since++;
-    const phraseStart = nat % Math.min(4, Math.max(this.unit, 2)) === 0;
+    const phraseStart = this.places[nat] === 0;
     if (this.since < this.gap || (!phraseStart && this.since < this.gap + 2)) return { bar: nat, jump: null };
     const options = this.jumps[i].filter(j => `${j.from}>${j.to}` !== this.lastJump && this.voiceClear(j));
     if (!options.length) return { bar: nat, jump: null };

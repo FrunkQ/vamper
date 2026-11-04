@@ -1,7 +1,10 @@
-// The editor page: a thin layer over the Looper (src/engine/looper.ts). Drop a song, select bars,
-// make cues, then orchestrate with Back / Next, number keys or by clicking the strip.
+// The page: a thin layer over the Looper (src/engine/looper.ts). Drop a song; it is analysed and
+// its holds (the parts the music can wait in) are found and armed; Play starts from the top and
+// the song waits at each hold until Go on. Fine-tuning (which parts hold, riff or loop, your own
+// bars) folds away underneath. Choices are saved per song in this browser.
 import { Looper, type Cue } from './engine/looper';
-import { barStarts, snapToBar, voiceAcross, VOICE_QUIET, type Quantise } from './engine/plan';
+import { voiceShare, RIFF_VOICE_MAX, type Hold } from './engine/holds';
+import { barStarts, snapToBar, type Quantise } from './engine/plan';
 import { voiceModel } from './analysis/voice';
 import { draw, stripHit, STRIP, type ViewState } from './view';
 
@@ -17,32 +20,35 @@ $('install').onclick = () => { installPrompt?.prompt(); installPrompt = null; $(
 
 // The voice pass's model and runtime are served from public/models/ (?novoice turns it off).
 const looper = new Looper(new URLSearchParams(location.search).has('novoice') ? {} : { voice: voiceModel(new URL('models/', document.baseURI).href) });
+looper.autoHold = true;
 const ui: ViewState = { selection: null };
 (window as any).__vamper = looper; // for headless checks and the console
 const canvas = $<HTMLCanvasElement>('view');
 let hash = '';
+let holds: Hold[] = [];
+let built = ''; // what the cues were last built from
 
 // ---- loading ----
 
 async function open(file: File) {
+  $('welcome').hidden = true; $('song').hidden = false; $('openlabel').hidden = false;
   $('track').textContent = file.name;
   $('progress').hidden = false;
-  const t0 = performance.now();
   await looper.load(file, p => {
     $('bar').style.width = `${Math.round(p.done * 100)}%`;
     $('progress-text').textContent =
-      p.stage === 'decode' ? 'Decoding the audio…' :
-      p.stage === 'analyse' ? `Finding beats, bars and sections: ${Math.round(p.done * 100)}%${p.etaSec !== null ? `, about ${Math.ceil(p.etaSec)} s left` : ''}` :
-      p.cached ? 'Opened from the cache.' : `Analysed in ${((performance.now() - t0) / 1000).toFixed(1)} s.`;
+      p.stage === 'decode' ? 'Opening the song…' :
+      p.stage === 'analyse' ? `Listening for the beat and the parts of the song… ${Math.round(p.done * 100)}%${p.etaSec !== null ? `, about ${Math.ceil(p.etaSec)} s left` : ''}` :
+      p.cached ? 'Heard this one before: ready at once.' : 'Heard the whole song.';
     if (p.stage === 'done') setTimeout(() => { if (!listening()) $('progress').hidden = true; }, 1500);
   }).then(score => {
     const t = score.track;
     $('track').textContent = `${t.title}${t.artist ? ' · ' + t.artist : ''} · ${score.tempo.at(-1)?.bpm ?? '?'} bpm · ${score.beats.filter(b => b.downbeat).length} bars`;
   });
 }
-looper.onChange = () => { if (looper.score && looper.score.track.hash !== hash) { hash = looper.score.track.hash; looper.cues = loadCues(hash); ui.selection = null; renderCues(); } };
+looper.onChange = () => { if (looper.score && looper.score.track.hash !== hash) { hash = looper.score.track.hash; prefs = loadPrefs(hash); ui.selection = null; built = ''; } };
 
-$<HTMLInputElement>('file').onchange = e => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void open(f); };
+for (const id of ['file', 'file0']) $<HTMLInputElement>(id).onchange = e => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void open(f); };
 window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('drag'); });
 window.addEventListener('dragleave', () => document.body.classList.remove('drag'));
 window.addEventListener('drop', e => { e.preventDefault(); document.body.classList.remove('drag'); const f = e.dataTransfer?.files[0]; if (f) void open(f); });
@@ -55,80 +61,125 @@ function showVoice() {
   if (listening()) {
     $('progress').hidden = false;
     $('bar').style.width = `${Math.round(v.done * 100)}%`;
-    $('progress-text').textContent = `${v.state === 'loading' ? 'Loading the voice model' : 'Listening for singing and talking'}, so changes don't cut a line in half: ${Math.round(v.done * 100)}%${v.etaSec !== null ? `, about ${Math.ceil(v.etaSec)} s left` : ''}. You can play already.`;
+    $('progress-text').textContent = `${v.state === 'loading' ? 'Getting ready to listen for singing' : 'Listening for singing and talking'}, so a riff never cuts a word… ${Math.round(v.done * 100)}%${v.etaSec !== null ? `, about ${Math.ceil(v.etaSec)} s left` : ''}. You can press Play already.`;
   } else if ((v.state === 'done' || v.state === 'failed') && voiceShown !== v.state) {
-    $('progress-text').textContent = v.state === 'done' ? 'Voices heard: changes now avoid cutting a sung line.' : `Couldn't listen for voices (${v.why}); changes land on the next bar as usual.`;
-    setTimeout(() => { if (!listening()) $('progress').hidden = true; }, v.state === 'done' ? 1500 : 5000);
+    $('progress-text').textContent = v.state === 'done' ? 'Done listening: the sung parts are marked in pink, and they loop rather than riff.' : `Couldn't listen for singing (${v.why}), so a riff may cut a word; make a sung part loop instead.`;
+    setTimeout(() => { if (!listening()) $('progress').hidden = true; }, v.state === 'done' ? 2500 : 6000);
   }
   voiceShown = v.state;
 }
 
-// ---- cues, saved per song in this browser ----
+// ---- holds: found from the score, with your choices on top, saved per song ----
 
-function loadCues(h: string): Cue[] { try { return JSON.parse(localStorage.getItem('cues:' + h) ?? '[]'); } catch { return []; } }
-function saveCues() { try { localStorage.setItem('cues:' + hash, JSON.stringify(looper.cues)); } catch { /* storage off: fine */ } }
+interface Prefs { hold: Record<string, boolean>; mode: Record<string, 'riff' | 'loop'>; seed: Record<string, number>; custom: { from: number; to: number }[] }
+let prefs: Prefs = { hold: {}, mode: {}, seed: {}, custom: [] };
+const key = (t: number) => t.toFixed(3);
+function loadPrefs(h: string): Prefs { try { return { hold: {}, mode: {}, seed: {}, custom: [], ...JSON.parse(localStorage.getItem('holds:' + h) ?? '{}') }; } catch { return { hold: {}, mode: {}, seed: {}, custom: [] }; } }
+function savePrefs() { try { localStorage.setItem('holds:' + hash, JSON.stringify(prefs)); } catch { /* storage off: fine */ } }
 
-// How many jumps a riff cue's passage has (the bar graph doesn't change with the seed, so it is kept).
-const riffInfo = new Map<string, { jumps: number; vocal: number }>();
-function riffSummary(c: Cue) {
-  const key = `${hash}:${c.from}:${c.to}:${looper.voice.state}`;
-  let info = riffInfo.get(key);
-  if (!info) {
-    const r = looper.riffFor(c);
-    info = { jumps: r.jumpCount, vocal: r.jumps.flat().filter(j => !r.voiceClear(j)).length };
-    riffInfo.set(key, info);
-  }
-  return info.jumps ? ` · ${info.jumps} jumps${info.vocal ? ` (${info.vocal} wait for a gap in the vocal)` : ''}` : ' · no bars alike enough to jump between: plays as a loop';
+/** Riff when the bars are alike enough to jump between and nobody sings there; else loop. */
+function autoMode(from: number, to: number): Cue['mode'] {
+  if ((voiceShare(looper.score!, from, to) ?? 0) > RIFF_VOICE_MAX) return 'loop';
+  const r = looper.riffFor({ from, to });
+  return r.jumps.flat().some(j => r.voiceClear(j)) ? 'riff' : 'loop';
 }
-const MODES = { loop: '⟲ loop', riff: '⤨ riff', once: '→ once' } as const;
-const NEXT_MODE = { loop: 'riff', riff: 'once', once: 'loop' } as const;
+
+const barNo = (t: number) => barStarts(looper.score!).filter(b => b < t - 0.02).length + 1;
+const barsOf = (c: Cue) => `bars ${barNo(c.from)}–${barNo(c.to) - 1}`;
+
+/** Rebuild the cue list from the holds and the saved choices (when the score or the voice pass has moved on). */
+function buildCues() {
+  const score = looper.score;
+  if (!score) return;
+  const now = `${hash}:${score.sections.length}:${score.final}:${looper.voice.state}:${prefs.custom.length}`;
+  if (now === built) return;
+  built = now;
+  holds = looper.holds();
+  const cue = (from: number, to: number, name: string, mode: Cue['mode'], on: boolean): Cue => {
+    const k = key(from), c: Cue = { name, from, to, mode: prefs.mode[k] ?? mode, hold: prefs.hold[k] ?? on };
+    if (prefs.seed[k] !== undefined) c.seed = prefs.seed[k];
+    return c;
+  };
+  const cues = holds.map(h => cue(h.from, h.to, h.name, h.mode, h.suggested));
+  for (const c of prefs.custom) cues.push(cue(c.from, c.to, 'mine', autoMode(c.from, c.to), true));
+  cues.sort((a, b) => a.from - b.from);
+  looper.cues = cues;
+  renderCues();
+}
+
+/** What a hold does and why, in a few words, for the list. */
+function why(c: Cue): string {
+  const h = holds.find(x => Math.abs(x.from - c.from) < 0.02 && Math.abs(x.to - c.to) < 0.02);
+  const parts: string[] = [];
+  if (c.mode === 'riff') { const r = looper.riffFor(c), n = r.jumps.flat().filter(j => r.voiceClear(j)).length; parts.push(n ? `riffs, ${n} places it can jump` : 'no two bars alike enough to jump: it will just repeat'); }
+  else if (h) parts.push(h.voice !== null && h.voice > RIFF_VOICE_MAX ? `repeats, since it is sung (${Math.round(h.voice * 100)}% of it)` : h.jumps === 0 && h.voice !== null ? 'repeats: no two bars alike enough to riff on' : 'repeats');
+  else parts.push('repeats');
+  if (h?.wrapVoice !== null && h?.wrapVoice !== undefined && h.wrapVoice >= 0.3) parts.push('the repeat cuts a sung line');
+  if (h && h.bars < h.sectionBars) parts.push(`shortened to ${h.bars} bars so the repeat is clear of the singing`);
+  return parts.join(' · ');
+}
 
 function renderCues() {
   const box = $('cues');
   box.innerHTML = '';
   const cur = looper.state().cue;
   looper.cues.forEach((c, i) => {
-    const el = document.createElement('div');
-    el.className = 'cue' + (cur === i ? ' on' : '');
-    const bars = barStarts(looper.score!);
-    const b0 = bars.findIndex(t => Math.abs(t - c.from) < 0.01) + 1, b1 = bars.findIndex(t => Math.abs(t - c.to) < 0.01);
-    // A loop whose wrap splits a vocal line (at its end or its start) will be heard every pass.
-    const cuts = c.mode !== 'once' && Math.max(voiceAcross(looper.score!, c.from) ?? 0, voiceAcross(looper.score!, c.to) ?? 0) >= VOICE_QUIET;
-    el.innerHTML = `<button data-go>${i + 1}</button><input value="${c.name.replace(/"/g, '&quot;')}" /><small>bars ${b0}–${b1 > 0 ? b1 : 'end'}${c.mode === 'riff' ? riffSummary(c) : ''}${cuts ? ' <span title="The loop wraps in the middle of a sung or spoken line">🎤 wrap cuts a vocal</span>' : ''}</small><button data-mode title="Loop the bars as they are, riff on them (a varied order), or play on through the song">${MODES[c.mode]}</button>${c.mode === 'riff' ? '<button data-seed title="Another riff on the same bars">🎲</button>' : ''}<button data-del>✕</button>`;
-    el.querySelector<HTMLButtonElement>('[data-go]')!.onclick = () => looper.goTo(i);
-    el.querySelector('input')!.onchange = e => { c.name = (e.target as HTMLInputElement).value; saveCues(); };
-    el.querySelector<HTMLButtonElement>('[data-mode]')!.onclick = () => { c.mode = NEXT_MODE[c.mode]; saveCues(); renderCues(); };
+    const el = document.createElement('div'), on = c.hold !== false, k = key(c.from), mine = holds.every(h => Math.abs(h.from - c.from) >= 0.02);
+    el.className = 'cue' + (cur === i ? ' now' : '') + (on ? '' : ' off');
+    el.innerHTML = `<label class="switch" title="When the song reaches this part, wait here until Go on"><input type="checkbox" ${on ? 'checked' : ''}/> wait here</label>` +
+      `<b>${i + 1}. ${c.name}</b> <small>${barsOf(c)} · ${why(c)}</small>` +
+      `<button data-mode title="Riff: the band plays these bars in a fresh order. Loop: repeat them as they are">${c.mode === 'riff' ? '⤨ riff' : '⟲ loop'}</button>` +
+      (c.mode === 'riff' ? '<button data-seed title="Another riff on the same bars">🎲</button>' : '') +
+      `<button data-go title="Play this part now">▶ hear</button>` + (mine ? '<button data-del title="Remove">✕</button>' : '');
+    el.querySelector('input')!.onchange = e => { c.hold = (e.target as HTMLInputElement).checked; prefs.hold[k] = c.hold; savePrefs(); renderCues(); };
+    el.querySelector<HTMLButtonElement>('[data-mode]')!.onclick = () => { c.mode = c.mode === 'riff' ? 'loop' : 'riff'; prefs.mode[k] = c.mode; savePrefs(); if (looper.state().cue === i && looper.deck.loop) looper.goTo(i); renderCues(); };
     el.querySelector<HTMLButtonElement>('[data-seed]')?.addEventListener('click', () => {
-      c.seed = Math.floor(Math.random() * 2 ** 32); saveCues();
+      c.seed = Math.floor(Math.random() * 2 ** 32); prefs.seed[k] = c.seed; savePrefs();
       if (looper.state().cue === i && looper.deck.riff) looper.goTo(i); // the new riff takes over at the next bar
     });
-    el.querySelector<HTMLButtonElement>('[data-del]')!.onclick = () => { looper.cues.splice(i, 1); saveCues(); renderCues(); };
+    el.querySelector<HTMLButtonElement>('[data-go]')!.onclick = () => looper.goTo(i);
+    el.querySelector<HTMLButtonElement>('[data-del]')?.addEventListener('click', () => { prefs.custom = prefs.custom.filter(x => Math.abs(x.from - c.from) >= 0.02); savePrefs(); built = ''; buildCues(); });
     box.append(el);
   });
 }
 
 function addCue() {
   if (!ui.selection) return;
-  const names = ['Explore', 'Tension', 'Combat', 'Victory', 'Calm', 'Chase', 'Mystery', 'Boss', 'Rest'];
-  looper.cues.push({ name: names[looper.cues.length % names.length], from: ui.selection[0], to: ui.selection[1], mode: 'loop' });
-  looper.cues.sort((a, b) => a.from - b.from);
-  saveCues(); renderCues();
+  prefs.custom.push({ from: ui.selection[0], to: ui.selection[1] });
+  ui.selection = null; savePrefs(); built = ''; buildCues();
+  $<HTMLDetailsElement>('tune').open = true;
 }
 
-// ---- selection: drag across bars; a click plays from that bar ----
+// ---- Play, Back, Go on ----
+
+/** The holds the song waits at, in order. */
+const armed = () => looper.cues.map((c, i) => ({ c, i })).filter(x => x.c.mode !== 'once' && x.c.hold !== false);
+
+const togglePlay = () => { if (looper.deck.playing) looper.stop(); else if (looper.score) looper.play(ui.selection?.[0] ?? 0); };
+/** Go on: let a held part go (the song plays on and waits at the next hold); when already playing on, jump to the next hold. */
+function goOn() {
+  const st = looper.state();
+  if (!st.playing) { togglePlay(); return; }
+  if (st.loop) { looper.release(); return; }
+  if (st.pending) return;
+  const next = armed().find(x => x.c.from > st.position + 0.5);
+  if (next) looper.goTo(next.i);
+}
+/** Back: the hold before the one being held (or before the playhead). */
+function goBack() {
+  const st = looper.state(), from = st.loop ? st.loop[0] : st.position;
+  const list = armed(), prev = list.filter(x => x.c.from < from - 0.5).at(-1) ?? list[0];
+  if (prev) looper.goTo(prev.i);
+}
+
+// ---- the picture: click a part to hear it, click the waveform to play from there, drag to choose bars ----
 
 let dragFrom: number | null = null, dragX = 0;
 const timeAt = (e: MouseEvent) => (e.offsetX / canvas.clientWidth) * (looper.buffer?.duration ?? 0);
 canvas.onmousedown = e => {
   if (!looper.score) return;
   const hit = stripHit(looper, canvas.clientWidth, e.offsetX, e.offsetY);
-  if (hit) {
-    if (hit.row === 'cue') looper.goTo(hit.index);
-    else if (looper.cues.length === 0) looper.goTo(hit.index);
-    else { const s = looper.score.sections; ui.selection = [s[hit.index].t, s[hit.index + 1]?.t ?? looper.playlist.at(-1)!.to]; }
-    return;
-  }
-  if (e.offsetY < STRIP * 2) return;
+  if (hit !== null) { if (hit >= 0) looper.goTo(hit); return; }
   dragFrom = timeAt(e); dragX = e.offsetX;
 };
 canvas.onmousemove = e => {
@@ -137,62 +188,73 @@ canvas.onmousemove = e => {
   ui.selection = b > a ? [a, b] : null;
 };
 canvas.onmouseup = e => {
-  if (dragFrom !== null && Math.abs(e.offsetX - dragX) < 4 && looper.score) {
+  if (dragFrom !== null && Math.abs(e.offsetX - dragX) < 4 && looper.score && e.offsetY >= STRIP) {
     const bars = barStarts(looper.score), t = timeAt(e);
+    ui.selection = null;
     looper.play(bars.filter(b => b <= t).at(-1) ?? 0);
   }
   dragFrom = null;
 };
-canvas.ondblclick = e => {
-  if (!looper.score || e.offsetY < STRIP * 2) return;
-  const t = timeAt(e), S = looper.score.sections, i = S.findIndex((s, k) => t >= s.t && t < (S[k + 1]?.t ?? Infinity));
-  if (i >= 0) ui.selection = [S[i].t, S[i + 1]?.t ?? looper.playlist[i].to];
-};
 
 // ---- buttons and keys ----
 
-const togglePlay = () => { if (looper.deck.playing) looper.stop(); else if (looper.score) looper.play(ui.selection?.[0] ?? 0); };
-const loopSel = () => { if (ui.selection) looper.loop(...ui.selection); };
 $('play').onclick = togglePlay;
-$('prev').onclick = () => looper.prev();
-$('next').onclick = () => looper.next();
-$('loop').onclick = loopSel;
-$('release').onclick = () => looper.release();
+$('prev').onclick = goBack;
+$('next').onclick = goOn;
+$('loop').onclick = () => { if (ui.selection) looper.loop(...ui.selection); };
 $('addcue').onclick = addCue;
 $<HTMLSelectElement>('quantise').onchange = e => { looper.quantise = (e.target as HTMLSelectElement).value as Quantise; };
 $<HTMLInputElement>('zoom').oninput = e => { canvas.style.width = `${Number((e.target as HTMLInputElement).value) * 100}%`; };
 window.addEventListener('keydown', e => {
-  if ((e.target as HTMLElement).tagName === 'INPUT') return;
+  if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return;
   if (e.key === ' ') { e.preventDefault(); togglePlay(); }
-  else if (e.key === 'ArrowRight') looper.next();
-  else if (e.key === 'ArrowLeft') looper.prev();
-  else if (e.key === 'l') loopSel();
-  else if (e.key === 'r') looper.release();
-  else if (e.key === 'c') addCue();
+  else if (e.key === 'ArrowRight' || e.key === 'Enter') goOn();
+  else if (e.key === 'ArrowLeft') goBack();
+  else if (e.key === 'l') { if (ui.selection) looper.loop(...ui.selection); }
+  else if (e.key === 'a' || e.key === 'c') addCue();
   else if (/^[1-9]$/.test(e.key)) looper.goTo(Number(e.key) - 1);
 });
 
-// ---- the live picture and readout ----
+// ---- the live readout, in plain words ----
 
 let lastCue = -2;
 function frame() {
+  buildCues();
   draw(canvas, looper, ui);
-  const st = looper.state(), list = looper.playlist;
+  const st = looper.state(), score = looper.score;
   $('play').textContent = st.playing ? '■ Stop' : '▶ Play';
-  if (looper.score) {
-    const cue = list[st.cue];
-    let html = st.playing ? `Bar <b>${st.bar}</b>` : 'Stopped';
-    if (cue) html += ` · ${looper.cues.length ? 'cue' : 'section'} <b>${cue.name}</b>`;
-    if (st.riff) html += ` · riffing ⤨ bars ${st.riff.path.slice(-8).join(' ')} (the last ones queued)`;
-    else if (st.loop) html += ' · looping';
-    if (st.pending) html += ` · next change: <b>${st.pending.label}</b> in ${st.pending.inSec.toFixed(1)} s${st.pending.forVoice ? ' (waiting for a gap in the vocal)' : ''}`;
-    $('readout').innerHTML = html;
+  ($('addcue') as HTMLButtonElement).disabled = ($('loop') as HTMLButtonElement).disabled = !ui.selection;
+  $('next').textContent = st.loop ? 'Go on ▶' : 'Next hold ▶';
+  if (score) {
+    const cue = looper.cues[st.cue], list = armed(), nextHold = list.find(x => x.c.from > st.position + 0.5);
+    const does = (c: Cue) => c.mode === 'riff' ? 'riffing on it' : 'repeating it';
+    let text: string, hint: string;
+    if (!st.playing) {
+      text = !score.final ? 'Still listening to the song. You can press Play already.' :
+        list.length ? `Ready. The song will hold in <b>${list.length}</b> ${list.length === 1 ? 'place' : 'places'}: ${list.map(x => `<b>${x.c.name}</b> (${x.c.mode})`).join(', ')}.` : 'Ready. No part is set to hold, so the song will just play through.';
+      hint = 'Press Play: the song starts from the top and, when it reaches a coloured part, keeps playing that part until you press Go on. Or click a coloured part to hear it straight away.';
+    } else if (st.pending) {
+      text = `Bar <b>${st.bar}</b> · moving to <b>${st.pending.label}</b> in ${st.pending.inSec.toFixed(1)} s${st.pending.forVoice ? ' (waiting for a gap in the singing)' : ''}`;
+      hint = 'The change lands on a bar line, so you shouldn\'t hear the join.';
+    } else if (st.loop && cue) {
+      text = `Bar <b>${st.bar}</b> · holding in <b>${cue.name}</b>, ${does(cue)}${st.riff ? ` · bars so far: ${st.riff.path.slice(-8).join(' ')}` : ''}`;
+      hint = `Press Go on when the scene moves: the song carries on${nextHold ? ` and holds again at ${nextHold.c.name}` : ' to the end'}. Back goes to the part before.`;
+    } else if (st.loop) {
+      text = `Bar <b>${st.bar}</b> · holding on the chosen bars`;
+      hint = 'Press Go on to carry on with the song.';
+    } else {
+      text = `Bar <b>${st.bar}</b> · playing on${nextHold ? ` · holds at <b>${nextHold.c.name}</b> in ${Math.max(0, nextHold.c.from - st.position).toFixed(0)} s` : ' · plays to the end'}`;
+      hint = nextHold ? 'The song plays through until it reaches the next coloured part, then holds there. Next hold jumps there now.' : 'No more holds ahead: the song plays to its end.';
+    }
+    $('readout').innerHTML = text;
+    $('hint').textContent = hint;
     const vs = looper.voice.state;
     $('joins').textContent = (vs === 'off' ? '' : `voice pass: ${vs}${looper.voice.why ? ' (' + looper.voice.why + ')' : ''}, waits up to ${looper.voiceWaitBars} bars for a gap\n`) +
+      `holds: ${holds.map(h => `${h.name} ${h.mode}${h.suggested ? '*' : ''} ${h.bars}/${h.sectionBars} bars${h.jumps ? ` ${h.jumps} jumps` : ''} voice ${h.voice === null ? '?' : Math.round(h.voice * 100) + '%'} wrap ${h.wrapDb} dB${h.rough ? ' ⚠' : ''}`).join('; ')}\n` +
       (st.riff ? `riff path (bars, latest last): ${st.riff.path.join(' ')}\n${st.riff.jumps} possible jumps in this passage\n` : '') +
-      (st.joins.map(j => `${j.kind.padEnd(6)} ${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s${j.riff ? `   bar ${j.riff.after} → ${j.riff.into}, alike ${j.riff.sim}` : ''}   step ${j.score.db} dB   match ${j.score.r}   voice ${j.voice === null ? '?' : j.voice.toFixed(2)}${j.kind !== 'change' && j.score.warn ? '   ⚠ may be audible' : ''}${j.voice !== null && j.voice >= VOICE_QUIET ? '   🎤 cuts a vocal' : ''}`).reverse().join('\n') || 'No joins yet.');
+      (st.joins.map(j => `${j.kind.padEnd(6)} ${j.from.toFixed(3)} s → ${j.to.toFixed(3)} s${j.riff ? `   bar ${j.riff.after} → ${j.riff.into}, alike ${j.riff.sim}` : ''}   step ${j.score.db} dB   match ${j.score.r}   voice ${j.voice === null ? '?' : j.voice.toFixed(2)}${j.kind !== 'change' && j.score.warn ? '   ⚠ may be audible' : ''}${j.voice !== null && j.voice >= 0.3 ? '   🎤 cuts a vocal' : ''}`).reverse().join('\n') || 'No joins yet.');
   }
-  if (st.cue !== lastCue || looper.voice.state !== voiceShown) { lastCue = st.cue; renderCues(); }
+  if (st.cue !== lastCue) { lastCue = st.cue; renderCues(); }
   showVoice();
   requestAnimationFrame(frame);
 }

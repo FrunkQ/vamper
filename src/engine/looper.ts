@@ -4,12 +4,15 @@
 // Audio, a Worker and IndexedDB, so it can be dropped into other apps (see docs/ENGINE.md).
 // Optionally (options.voice) it then listens for singing and talking, so changes avoid cutting a
 // vocal line in half; the song plays while it listens. A `riff` cue plays its bars in a varied
-// order instead of looping them (see riff.ts).
+// order instead of looping them (see riff.ts). With `autoHold` on, a song played from the top
+// waits at each loop or riff cue it reaches until next() or release(); holds() finds those cues
+// from the score (see holds.ts).
 import { Analyzer } from '../analysis/analyzer';
 import { Cutter } from './cuts';
 import { Deck, type JoinLog } from './deck';
 import { barIndexAt, lastBar, sectionNames, type Quantise } from './plan';
 import { seedOf, type Riff, type RiffOptions } from './riff';
+import { findHolds, type Hold } from './holds';
 import { applyDelta, emptyScore, type Score, type ScoreDelta } from '../score/types';
 import { hashFile, loadScore, saveScore } from '../score/cache';
 import { readTags } from '../audio/tags';
@@ -28,9 +31,10 @@ export interface LooperOptions {
  * A passage the music can sit in: `loop` repeats from..to until the next change; `riff` stays in
  * from..to too, but plays its bars in a varied order, like a band vamping (the same `seed` gives
  * the same riff; left out, it comes from the song and the cue's start); `once` plays from `from`
- * and carries on through the song. Times are downbeats (seconds).
+ * and carries on through the song. Times are downbeats (seconds). With `autoHold` on, playing on
+ * into a loop or riff cue holds there unless the cue says `hold: false`.
  */
-export interface Cue { name: string; from: number; to: number; mode: 'loop' | 'once' | 'riff'; seed?: number }
+export interface Cue { name: string; from: number; to: number; mode: 'loop' | 'once' | 'riff'; seed?: number; hold?: boolean }
 
 export interface LoadProgress { stage: 'decode' | 'analyse' | 'done'; done: number; etaSec: number | null; cached: boolean }
 
@@ -57,12 +61,24 @@ export class Looper {
   score: Score | null = null;
   cues: Cue[] = [];
   private cueIndex = -1;
+  /**
+   * When on, a song playing on (from play(), a once cue, or release()) holds at each loop or riff
+   * cue it reaches, as if goTo had been pressed there, unless the cue says `hold: false`; so the
+   * song plays from the top and waits at each hold until next() or release(). Off by default.
+   */
+  autoHold = false;
+  /** The cue release() let go of: not held again until the playhead has left it. */
+  private released: Cue | null = null;
+  private watcher: ReturnType<typeof setInterval>;
   private worker: Worker | null = null;
   private voicePass: VoicePass | null = null;
   /** Called whenever the score grows or the playback state changes. */
   onChange: (() => void) | null = null;
 
-  constructor(private options: LooperOptions = {}) { this.deck.onChange = () => this.onChange?.(); }
+  constructor(private options: LooperOptions = {}) {
+    this.deck.onChange = () => this.onChange?.();
+    this.watcher = setInterval(() => this.watch(), 50);
+  }
 
   /** How far the voice pass has got (state 'off' when it isn't running for this song). */
   get voice(): VoiceProgress { return this.voicePass?.progress ?? { state: 'off', done: 0, etaSec: null, why: '' }; }
@@ -158,11 +174,33 @@ export class Looper {
     return S.map((s, i) => ({ name: names[i], from: s.t, to: S[i + 1]?.t ?? lastBar(this.score!, end), mode: 'loop' as const }));
   }
 
+  /**
+   * The holds of this song: every section of four bars or more, as a riff (bars alike enough to
+   * jump between, nobody singing or talking) or a loop, the best per group `suggested`. They
+   * change as the score grows and once the voice pass has listened, so ask again then.
+   */
+  holds(): Hold[] {
+    if (!this.score || !this.deck.cutter) return [];
+    const c = this.deck.cutter;
+    return findHolds(this.score, { riff: (a, b) => this.riffFor({ from: a, to: b }), joinDb: (o, i) => c.score(c.join(o), c.join(i)).db });
+  }
+
+  /** autoHold: playing on into a loop or riff cue holds there. */
+  private watch() {
+    const d = this.deck;
+    if (!this.autoHold || !d.playing || d.loop || d.pending) return;
+    const p = d.position, list = this.playlist;
+    if (this.released && p >= this.released.from - 0.1 && p < this.released.to + 0.1) return;
+    this.released = null;
+    const i = list.findIndex(c => c.mode !== 'once' && c.hold !== false && p >= c.from && p < c.to - 0.5);
+    if (i >= 0) this.goTo(i);
+  }
+
   /** Change to cue i at the next quantise point (or start it, when stopped). */
   goTo(i: number) {
     const cue = this.playlist[i];
     if (!cue) return;
-    this.cueIndex = i;
+    this.cueIndex = i; this.released = null;
     if (cue.mode === 'riff') this.deck.setRiff(cue.from, cue.to, this.riffFor(cue), cue.name);
     else if (cue.mode === 'loop') this.deck.setLoop(cue.from, cue.to, cue.name);
     else this.deck.change(cue.from, null, cue.name);
@@ -171,7 +209,7 @@ export class Looper {
   next() { this.goTo(Math.min(this.playlist.length - 1, this.currentCue() + 1)); }
   prev() { this.goTo(Math.max(0, this.currentCue() - 1)); }
 
-  play(from = 0) { this.cueIndex = -1; this.deck.play(from); }
+  play(from = 0) { this.cueIndex = -1; this.released = null; this.deck.play(from); }
   stop() { this.deck.stop(); }
   /**
    * The riff a cue would play: its bar graph (`jumps`, `jumpCount`) and its walk. Options other
@@ -182,8 +220,9 @@ export class Looper {
   }
 
   /** Loop an arbitrary passage (downbeat times), e.g. a selection. */
-  loop(from: number, to: number) { this.cueIndex = -1; this.deck.setLoop(from, to, 'selection'); }
-  release() { this.deck.release(); }
+  loop(from: number, to: number) { this.cueIndex = -1; this.released = null; this.deck.setLoop(from, to, 'selection'); }
+  /** Play on past the loop's end into the rest of the song (with autoHold, the next hold waits). */
+  release() { this.released = this.playlist[this.currentCue()] ?? (this.deck.loop ? { name: '', from: this.deck.loop[0], to: this.deck.loop[1], mode: 'loop' } : null); this.deck.release(); }
   /** Hold everything where it is (the audio clock stops), and carry on from there. */
   pause() { void this.deck.ctx.suspend(); }
   resume() { void this.deck.ctx.resume(); }
@@ -191,7 +230,7 @@ export class Looper {
   /** Output level, 0..1 linear gain, faded over `rampSec`. */
   setVolume(gain: number, rampSec = 0) { this.deck.setVolume(gain, rampSec); }
   /** Done with this Looper: stops the worker, the audio and the AudioContext. */
-  dispose() { this.worker?.terminate(); this.worker = null; this.voicePass?.stop(); this.deck.dispose(); }
+  dispose() { clearInterval(this.watcher); this.worker?.terminate(); this.worker = null; this.voicePass?.stop(); this.deck.dispose(); }
 
   /** The cue in play: the one last chosen while it is still targeted or playing, else the cue under the playhead. */
   currentCue(): number {

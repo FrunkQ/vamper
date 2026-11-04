@@ -2,15 +2,16 @@
 
 A film-score looper for game masters. Installable browser app using your own music files.
 
-In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections. Mark the passages you want (a quiet loop for exploring, a loud one for combat), then during the session just step forward and back, or click a section, and the music moves on at the next bar with a join you shouldn't hear.
+In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections, and marks the parts it can wait in. Press Play: the song plays from the top and, at each marked part, keeps playing that part (riffing on its bars, or repeating them) until you press **Go on**. The music moves on at the next bar with a join you shouldn't hear.
 
 **Use it at [vamper.starsystemx.com](https://vamper.starsystemx.com).** Everything runs in your browser. Nothing is uploaded, there are no accounts, and it's free. Install it from the browser's address bar (or the **Install app** button) and it opens in its own window, offline too.
 
 ## Use it
 
-1. Drop a song on the page (MP3, WAV, FLAC, OGG, M4A). It is analysed in a few seconds and remembered for next time. Then it listens for singing and talking (a few seconds, while you can already play), so a change waits a bar or two rather than cut a sung line in half.
-2. Until you make cues, every section is a cue. To make your own, drag across the waveform to select bars and press **+ Cue** (or `C`). Each cue loops until you move on, **riffs** (plays its bars in a varied order, like a band vamping, so a long scene doesn't hear the same tape over and over; 🎲 for another riff), or plays **once** and carries on. The cue's mode button switches between them.
-3. Play with `Space`, step with `←` `→`, jump with `1`-`9`, or click a block on the strip. The readout says when the change will land.
+1. Drop a song on the page (MP3, WAV, FLAC, OGG, M4A). It is listened to in a few seconds and remembered for next time. Then it listens for singing and talking (a few seconds more, while you can already play): a sung part repeats rather than riffs, and a change waits a bar or two rather than cut a sung line in half.
+2. The parts the song will wait in are coloured on the strip: green **riffs** (the band plays the part's bars in a fresh order, so a long scene doesn't hear the same tape over and over), blue **loops** (the part repeats as it is, when its bars are too different to riff on, or it is sung). Pink is singing or talking.
+3. **Play** starts from the top; the song holds at each coloured part until **Go on** (`→` or `Enter`); **Back** (`←`) returns to the part before. Click a part to hear it now, click the waveform to play from there, `1`-`9` jump to a part. The readout says what the music is doing and when a change will land.
+4. **Fine-tune**, underneath, lists every part: switch one off to let the song play through it, make it riff or loop, roll another riff (🎲), or drag across the waveform and **Add** your own bars. Choices are remembered per song.
 
 ## Use the engine in your own app
 
@@ -38,6 +39,11 @@ looper.goTo(0);            // starts at once from silence
 looper.goTo(1);            // while playing: changes on the next bar, seamlessly
 looper.state();            // position, bar, current cue, the pending change and its countdown
 looper.setVolume(0.8, 1.5); looper.pause(); looper.resume(); looper.dispose();
+
+// Or let the engine find the holds and wait at them, as the Vamper page does:
+looper.cues = looper.holds().map(h => ({ name: h.name, from: h.from, to: h.to, mode: h.mode, hold: h.suggested }));
+looper.autoHold = true;   // playing on into a loop or riff cue holds there
+looper.play(0);           // from the top; looper.release() lets a hold go, and the song waits at the next
 ```
 
 - **It's TypeScript source**, compiled by your bundler. With Vite, add `optimizeDeps: { exclude: ['vamper'] }` so the analysis worker loads (without a worker it still works, on the main thread). For Vitest, add `test.server.deps.inline: ['vamper']`.

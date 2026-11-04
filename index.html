@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vamper</title>
-  <meta name="description" content="A film-score looper for game masters. Installable browser app using your own music files." />
+  <meta name="description" content="Music that waits for the game. Drop in a song: it plays from the top and holds at the right places until you say go. Browser only, nothing uploaded." />
   <meta name="theme-color" content="#1d2026" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
@@ -14,32 +14,50 @@
 <body>
   <header>
     <h1>Vamper</h1>
-    <span id="track">Drop a song anywhere on the page, or <label class="file">open one<input id="file" type="file" accept="audio/*" hidden /></label>. It stays on your machine.</span>
+    <span id="track">Music that waits for the game.</span>
+    <label class="file" id="openlabel" hidden>open another<input id="file" type="file" accept="audio/*" hidden /></label>
     <button id="install" hidden>Install app</button>
     <span id="build"></span>
   </header>
-  <div id="progress" hidden><div id="bar"></div><span id="progress-text"></span></div>
   <main>
-    <div id="lane"><canvas id="view"></canvas></div>
-    <div id="controls">
-      <button id="play" title="Space">▶ Play</button>
-      <button id="prev" title="Left arrow">◀ Back</button>
-      <button id="next" title="Right arrow">Next ▶</button>
-      <button id="loop" title="L">Loop selection</button>
-      <button id="release" title="R">Play on</button>
-      <button id="addcue" title="C">+ Cue from selection</button>
-      <label>Change at <select id="quantise">
-        <option value="beat">next beat</option>
-        <option value="bar" selected>next bar</option>
-        <option value="phrase">next phrase</option>
-        <option value="loop">end of loop pass</option>
-      </select></label>
-      <label>Zoom <input id="zoom" type="range" min="1" max="8" step="0.5" value="1" /></label>
-    </div>
-    <div id="readout">No song loaded.</div>
-    <div id="cues"></div>
-    <details id="debug"><summary>Joins (debug)</summary><pre id="joins"></pre></details>
-    <p class="help">Drag across the waveform to select bars; click to play from a bar. Click a block on the strip to go there. A cue's ⟲ button switches it between loop, ⤨ riff (its bars in a varied order, like a band vamping; 🎲 for another riff) and → once. Keys: Space play/stop, ← → back/next cue, 1-9 jump to a cue, L loop the selection, R play on, C add a cue.</p>
+    <section id="welcome">
+      <label class="drop">
+        <strong>Drop a song here</strong>
+        <span>or <u>choose one</u> from your computer</span>
+        <input id="file0" type="file" accept="audio/*" hidden />
+      </label>
+      <p>Vamper reads the song, finds the parts it can wait in, and plays it so the music <b>holds</b> there until you say go. The join is on the beat and you shouldn't hear it. Everything happens in your browser: the song never leaves your computer.</p>
+    </section>
+    <section id="song" hidden>
+      <div id="progress" hidden><div id="bar"></div><span id="progress-text"></span></div>
+      <div id="lane"><canvas id="view"></canvas></div>
+      <div id="legend"><i class="riff"></i> riff: the part plays on in a fresh order &nbsp; <i class="loop"></i> loop: the part repeats &nbsp; <i class="voice"></i> singing or talking &nbsp; <i class="dim"></i> the song plays through</div>
+      <div id="controls">
+        <button id="play" class="big" title="Space">▶ Play</button>
+        <button id="prev" class="big" title="Left arrow">◀ Back</button>
+        <button id="next" class="big" title="Right arrow or Enter">Go on ▶</button>
+      </div>
+      <div id="readout">Reading the song…</div>
+      <p id="hint" class="help"></p>
+      <details id="tune">
+        <summary>Fine-tune</summary>
+        <p class="help">Each part the song waits in is listed below. Switch a part off to let the song play through it, make it riff or loop, roll another riff, or hear it now. To wait in some other bars, drag across the waveform and press <b>Add</b>. Keys: <kbd>Space</kbd> play or stop, <kbd>→</kbd> go on, <kbd>←</kbd> back, <kbd>1</kbd>–<kbd>9</kbd> jump to a part, <kbd>A</kbd> add the selected bars.</p>
+        <div id="cues"></div>
+        <div id="more">
+          <button id="addcue" disabled>+ Add the selected bars</button>
+          <button id="loop" disabled title="L">Loop the selected bars now</button>
+          <label>Change at <select id="quantise">
+            <option value="beat">next beat</option>
+            <option value="bar" selected>next bar</option>
+            <option value="phrase">next phrase</option>
+            <option value="loop">end of loop pass</option>
+          </select></label>
+          <label>Zoom <input id="zoom" type="range" min="1" max="8" step="0.5" value="1" /></label>
+        </div>
+        <p class="help">The small red ticks along the top of the waveform are where each four-bar phrase starts; a riff's jumps (the green arcs) always land in the same place of a phrase. A red mark under the waveform is a join that may have been heard, a pink one a join that cut a sung line.</p>
+        <details id="debug"><summary>Joins (debug)</summary><pre id="joins"></pre></details>
+      </details>
+    </section>
     <p class="fun">Have fun with this tech: the same listening powers <a href="https://gondryator.starsystemx.com/" target="_blank" rel="noopener">the Gondryator</a>, which turns any song into a ride where the world keeps time with the music. <a href="https://github.com/FrunkQ/vamper/blob/main/docs/TECHNOLOGY.md" target="_blank" rel="noopener">How Vamper works</a>.</p>
   </main>
   <script type="module" src="/src/main.ts"></script>
