@@ -4,7 +4,7 @@ A film-score looper for game masters. Installable browser app using your own mus
 
 In film and game scoring, *vamping* is holding a phrase until the action moves on; Vamper does that with any song. Drop in a song from your own machine; it finds the beats, bars and sections, and marks the parts it can wait in. Press Play: the song plays from the top and, at each marked part, keeps playing that part (riffing on its bars, or repeating them) until you press **Go on**. The music moves on at the next bar with a join you shouldn't hear.
 
-**Use it at [vamper.sublime.co.uk](https://vamper.sublime.co.uk).** Everything runs in your browser. Nothing is uploaded, there are no accounts, and it's free. Install it from the browser's address bar (or the **Install app** button) and it opens in its own window, offline too.
+**Use it at [vamper.sublime.co.uk](https://vamper.sublime.co.uk).** Questions, songs that misbehave, ideas: [Discord](https://discord.gg/aec5rGTcyC). If it earns a place at your table, [Ko-fi](https://ko-fi.com/frunkq). Everything runs in your browser. Nothing is uploaded, there are no accounts, and it's free. Install it from the browser's address bar (or the **Install app** button) and it opens in its own window, offline too.
 
 ## Use it
 
