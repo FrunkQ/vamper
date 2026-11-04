@@ -61,7 +61,7 @@ sequenceDiagram
         L->>V: listen for singing and talking (YAMNet)
         loop every 6 s of audio
             V-->>L: voice curve so far
-            L-->>Page: redraw; progress and time left
+            L-->>Page: redraw, with progress and time left
         end
         L->>DB: save the score with its voice curve
     end
