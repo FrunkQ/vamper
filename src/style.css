@@ -19,7 +19,6 @@ body {
 }
 header { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; padding: 22px max(20px, env(safe-area-inset-right, 0px)) 10px max(20px, env(safe-area-inset-left, 0px)); border-bottom: 1.5px solid var(--ink); margin: 0 20px; }
 h1 { font-size: 34px; font-weight: 400; margin: 0; letter-spacing: 0.02em; }
-h1::after { content: "vamp till ready"; display: block; font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-soft); margin-top: -2px; }
 #track { flex: 1; min-width: 0; color: var(--ink-soft); font-style: italic; }
 #build { color: var(--ink-soft); font-size: 12px; opacity: 0.7; }
 .file { color: var(--pencil); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
