@@ -4,10 +4,10 @@
 // a loop only cuts at its wrap), and loops otherwise. A loop's wrap is checked: a vocal line across
 // it is heard on every pass, so then a shorter passage of whole phrases whose wrap is clear of the
 // vocal is used instead; a loudness step is only reported (at a section's end, what would have
-// followed is the next section, so a step there is often just the music changing). One hold per musical
-// group (the best: a riff over a loop, a clean wrap over a flagged one, longer over shorter) is
-// `suggested`: those are the ones a song waits at when played from the top. Pure, so the deck and
-// the Node join test share it.
+// followed is the next section, so a step there is often just the music changing). Up to four holds
+// are `suggested`, the ones a song waits at when played from the top: the two longest riffs and the
+// two longest loops, never the intro, a breakdown or the outro while there is anything else (those
+// are passages between grooves, not grooves to sit in). Pure, so the deck and the Node join test share it.
 import type { Score } from '../score/types';
 import { barStarts, sectionNames, voiceAcross, voiceAt, VOICE_QUIET } from './plan';
 import type { Riff } from './riff';
@@ -16,6 +16,8 @@ import type { Riff } from './riff';
 export const RIFF_VOICE_MAX = 0.2;
 /** A loop's wrap with a bigger loudness step (dB) than this is likely to be heard. */
 export const WRAP_MAX_DB = 3;
+/** Sections a song doesn't wait at by default: passages between grooves rather than grooves. */
+export const PASSING = new Set(['intro', 'breakdown', 'outro']);
 
 export interface Hold {
   /** The section it comes from (index into score.sections). */
@@ -38,7 +40,7 @@ export interface Hold {
   wrapVoice: number | null;
   /** True when the wrap may be heard on every pass: a loudness step over WRAP_MAX_DB, or a vocal line across it. */
   rough: boolean;
-  /** The one hold per group a song waits at by default. */
+  /** The holds a song waits at by default: the two longest riffs and the two longest loops (not the intro, a breakdown or the outro). */
   suggested: boolean;
 }
 
@@ -58,7 +60,7 @@ export function voiceShare(score: Score, from: number, to: number): number | nul
   return n ? on / n : 0;
 }
 
-/** The holds of a song: every section of four bars or more, as a riff or a loop, the best per group marked `suggested`. */
+/** The holds of a song: every section of four bars or more, as a riff or a loop; the two longest riffs and the two longest loops marked `suggested`. */
 export function findHolds(score: Score, tools: HoldTools, minBars = 4): Hold[] {
   const bars = barStarts(score), S = score.sections, names = sectionNames(score);
   const end = score.final ? score.track.durationSec : score.frontierSec;
@@ -88,15 +90,12 @@ export function findHolds(score: Score, tools: HoldTools, minBars = 4): Hold[] {
     }
     holds.push({ section: i, name: names[i], label: s.label, from, to, bars: inside.filter(t => t < to - 0.02).length, sectionBars: inside.length, mode, jumps, voice, wrapDb: w.db, wrapVoice: w.wv, rough: w.rough, suggested: false });
   });
-  // The best hold of each group is the one a song waits at.
-  const best = new Map<number | string, Hold>();
-  for (const h of holds) {
-    const key = S[h.section].group ?? `s${h.section}`, other = best.get(key);
-    if (!other || rank(h) > rank(other)) best.set(key, h);
+  // The song waits at the two longest riffs and the two longest loops, leaving the intro, breakdowns
+  // and the outro alone (unless they are all there is): a few holds is plenty to start with; the rest can be switched on.
+  const middle = holds.filter(h => !PASSING.has(h.label)), pool = middle.length ? middle : holds;
+  for (const mode of ['riff', 'loop'] as const) {
+    for (const h of pool.filter(h => h.mode === mode).sort((a, b) => b.bars - a.bars || Number(a.rough) - Number(b.rough)).slice(0, 2)) h.suggested = true;
   }
-  for (const h of best.values()) h.suggested = true;
   return holds;
 }
-
-function rank(h: Hold) { return (h.mode === 'riff' ? 4 : 0) + (h.rough ? 0 : 2) + Math.min(1, h.bars / 32); }
 function max(a: number | null, b: number | null) { return a === null ? b : b === null ? a : Math.max(a, b); }
