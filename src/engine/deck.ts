@@ -38,7 +38,10 @@ export interface JoinLog {
 
 export class Deck {
   readonly ctx = new AudioContext({ latencyHint: 'interactive' });
-  private out = this.ctx.createGain();
+  /** The master gain everything plays through (setVolume ramps it). */
+  readonly out = this.ctx.createGain();
+  /** A second gain in series, for pause and resume fades, so they leave the volume alone. */
+  private fade = this.ctx.createGain();
   private buffer: AudioBuffer | null = null;
   /** The song's cutter (cut points and join scores), once loaded. */
   cutter: Cutter | null = null;
@@ -59,7 +62,7 @@ export class Deck {
   private timer: ReturnType<typeof setInterval>;
 
   constructor() {
-    this.out.connect(this.ctx.destination);
+    this.fade.connect(this.out).connect(this.ctx.destination);
     this.timer = setInterval(() => this.tick(), 40);
   }
 
@@ -69,6 +72,14 @@ export class Deck {
     g.cancelScheduledValues(now);
     g.setValueAtTime(g.value, now);
     g.linearRampToValueAtTime(Math.max(0, gain), now + Math.max(0.01, rampSec));
+  }
+
+  /** Fade everything playing to `gain` (0..1) over `sec`, on top of the volume. */
+  fadeTo(gain: number, sec: number) {
+    const g = this.fade.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(gain, now + Math.max(0.005, sec));
   }
 
   /** Stop for good: release the audio device and the timer. */
@@ -221,7 +232,7 @@ export class Deck {
     const src = this.ctx.createBufferSource();
     src.buffer = this.buffer;
     const gain = this.ctx.createGain();
-    src.connect(gain).connect(this.out);
+    src.connect(gain).connect(this.fade);
     src.start(when, seg.s / this.buffer!.sampleRate);
     const v: Voice = { src, gain, when, seg, fadeOutAt: null };
     if (seg.e < this.buffer!.length) src.stop(this.timeOf(v, seg.e));

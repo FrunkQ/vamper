@@ -159,7 +159,7 @@ flowchart LR
     W -- yes --> SH[Shorten to whole phrases<br/>with a clear wrap]
 ```
 
-In play, **Play** starts from the top; when the song reaches a hold it keeps playing that part, and **Go on** lets it carry on to the next. **Back** returns to the part before, number keys and clicks go straight to a part, and the fine-tune list switches holds on and off, flips riff and loop, or adds your own bars (drag across the waveform). Choices are saved in your browser, keyed by the song file's fingerprint, so they come back when you open the same file again.
+In play, **Play** starts from the top; when the song reaches a hold it keeps playing that part, and **Go on** lets it carry on to the next. **Back** returns to the part before, number keys go straight to a part, a click on a part in the strip switches its hold on (riffing if it can, else looping) or off, and the fine-tune list does the same with words, flips riff and loop, or adds your own bars (drag across the waveform). A riff needs at least three places it can jump; with fewer it would mostly repeat and only confuse, so it loops. **Pause** fades out and freezes the clock; Resume comes back in from a bar line a moment earlier, fading in, so the ear is back in the music before the place it left. **Duck** halves the loudness (about 10 dB down, what the ear hears as half) while you talk, **Mute** silences; both are faded and come straight back. Choices are saved in your browser, keyed by the song file's fingerprint, so they come back when you open the same file again.
 
 Other apps get the same from the engine: `looper.holds()` finds the holds, and `looper.autoHold` makes a song playing on wait at each loop or riff cue it reaches.
 

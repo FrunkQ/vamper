@@ -18,7 +18,7 @@ import { buildSync } from 'esbuild';
 
 fs.mkdirSync('.cache', { recursive: true });
 buildSync({ stdin: { contents: "export * from './src/analysis/analyzer'; export * from './src/engine/cuts'; export * from './src/engine/plan'; export * from './src/engine/riff'; export * from './src/engine/holds';", resolveDir: '.', loader: 'ts' }, bundle: true, format: 'esm', platform: 'node', outfile: '.cache/engine.mjs', logLevel: 'error' });
-const { Analyzer, Cutter, Riff, render, barStarts, followingSection, nextCut, findHolds, PASSING } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
+const { Analyzer, Cutter, Riff, render, barStarts, followingSection, nextCut, findHolds, PASSING, RIFF_MIN_JUMPS } = await import(process.cwd() + '/.cache/engine.mjs?' + Date.now());
 
 const TRACKS = ['test-124', 'test-100', 'test-120'];
 if (TRACKS.some(t => !fs.existsSync(`test-tracks/${t}.wav`))) execFileSync('node', ['tools/make-test-tracks.mjs'], { stdio: 'inherit' });
@@ -105,7 +105,7 @@ for (const name of TRACKS) {
   const holdRules = [
     ['there are holds', holds.length > 0],
     ['every hold is whole bars inside its section', holds.every(h => whole(h.from) && whole(h.to) && h.from === score.sections[h.section].t && h.to <= (score.sections[h.section + 1]?.t ?? Infinity) + 1e-6 && h.bars >= 4)],
-    ['a riff hold has jumps, a loop hold none', holds.every(h => (h.mode === 'riff') === h.jumps > 0)],
+    ['a riff hold has at least three jumps, a loop hold fewer', holds.every(h => (h.mode === 'riff') === h.jumps >= RIFF_MIN_JUMPS)],
     ['some hold riffs', holds.some(h => h.mode === 'riff')],
     ['the two longest riffs and loops are suggested, not the intro, breakdown or outro', ['riff', 'loop'].every(m => { const c = holds.filter(h => h.mode === m && !PASSING.has(h.label)), on = c.filter(h => h.suggested); return on.length === Math.min(2, c.length) && c.every(h => h.suggested || on.every(o => o.bars >= h.bars)); }) && holds.every(h => !h.suggested || !PASSING.has(h.label))],
     ['a sung line everywhere makes every hold a loop', sungHolds.every(h => h.mode === 'loop' && h.voice === 1)],

@@ -71,6 +71,11 @@ button.big { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
 button.big:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--paper-dark); }
 select { padding: 5px 8px; }
 
+#level { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+#level label { display: inline-flex; align-items: center; gap: 4px; }
+#level input { width: 110px; accent-color: var(--pencil); }
+#level button.on { background: var(--pencil); border-color: var(--pencil); color: var(--paper-light); }
+
 /* The readout: a note in the margin, in red pencil. */
 #readout { font-size: 17px; padding: 2px 0 2px 12px; border-left: 3px solid var(--pencil); min-height: 28px; }
 #readout b { color: var(--pencil); font-weight: 600; }

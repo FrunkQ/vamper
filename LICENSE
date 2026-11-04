@@ -1,4 +1,4 @@
-MIT License
+Vamper Licence: MIT, plus a credit
 
 Copyright (c) 2026 Alex (FrunkQ) - https://github.com/FrunkQ/vamper
 
@@ -9,8 +9,17 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
+
+2. Credit. Anything made with the Software, or that includes it, must credit
+   it by name with a link, where its audience can see it:
+
+     Vamper - https://github.com/FrunkQ/vamper
+
+   For a game, app or website that is its credits or About page. For a live
+   production, stream, video, podcast or show that is its credits, description
+   or programme. Nothing more is asked: no fee, no approval, no notice.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -19,3 +28,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Versions up to commit e938185 (4 November 2026) were released under the plain
+MIT License, and versions before 21 October 2026 (up to commit f4bfc39) under
+The Unlicense; those remain so.

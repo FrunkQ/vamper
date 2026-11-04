@@ -37,12 +37,17 @@
         <button id="pause" class="big" title="Space">⏸ Pause</button>
         <button id="prev" class="big" title="Left arrow">◀ Back</button>
         <button id="next" class="big" title="Right arrow or Enter">Go on ▶</button>
+        <span id="level">
+          <label title="Master volume">🔊 <input id="volume" type="range" min="0" max="100" value="100" /></label>
+          <button id="duck" title="Half as loud while you talk; press again to bring it back (D)">🔉 Duck</button>
+          <button id="mute" title="Silence; press again to bring it back (M)">🔇 Mute</button>
+        </span>
       </div>
       <div id="readout">Reading the song…</div>
       <p id="hint" class="help"></p>
       <details id="tune" open>
         <summary>Fine-tune</summary>
-        <p class="help">Each part the song waits in is listed below. Switch a part off to let the song play through it, make it riff or loop, roll another riff, or hear it now. To wait in some other bars, drag across the waveform and press <b>Add</b>. Keys: <kbd>Space</kbd> pause and resume (or play), <kbd>→</kbd> go on, <kbd>←</kbd> back, <kbd>1</kbd>–<kbd>9</kbd> jump to a part, <kbd>A</kbd> add the selected bars.</p>
+        <p class="help">Each part the song waits in is listed below. Switch a part off to let the song play through it, make it riff or loop, roll another riff, or hear it now. To wait in some other bars, drag across the waveform and press <b>Add</b>. Keys: <kbd>Space</kbd> pause and resume (or play), <kbd>→</kbd> go on, <kbd>←</kbd> back, <kbd>1</kbd>–<kbd>9</kbd> jump to a part, <kbd>D</kbd> duck, <kbd>M</kbd> mute, <kbd>A</kbd> add the selected bars. A click on a part in the strip switches its hold on or off.</p>
         <div id="cues"></div>
         <div id="more">
           <button id="addcue" disabled>+ Add the selected bars</button>

@@ -14,6 +14,8 @@ import type { Riff } from './riff';
 
 /** A section with more of its time sung or spoken than this (0..1) loops rather than riffs. */
 export const RIFF_VOICE_MAX = 0.2;
+/** A riff needs at least this many jumps it can take; with fewer it would mostly repeat, which confuses, so it loops. */
+export const RIFF_MIN_JUMPS = 3;
 /** A loop's wrap with a bigger loudness step (dB) than this is likely to be heard. */
 export const WRAP_MAX_DB = 3;
 /** Sections a song doesn't wait at by default: passages between grooves rather than grooves. */
@@ -31,7 +33,7 @@ export interface Hold {
   bars: number;
   sectionBars: number;
   mode: 'riff' | 'loop';
-  /** Jumps the riff can take (after the voice curve rules some out); 0 for a loop. */
+  /** Jumps the riff can take (after the voice curve rules some out); a loop has fewer than RIFF_MIN_JUMPS (0 when it is sung). */
   jumps: number;
   /** Share of the passage (0..1) with someone singing or talking; null until the voice pass has listened there. */
   voice: number | null;
@@ -79,7 +81,7 @@ export function findHolds(score: Score, tools: HoldTools, minBars = 4): Hold[] {
     if ((voice ?? 0) <= RIFF_VOICE_MAX) {
       const r = tools.riff(from, secEnd);
       jumps = r.jumps.flat().filter(j => r.voiceClear(j)).length;
-      if (jumps > 0) mode = 'riff';
+      if (jumps >= RIFF_MIN_JUMPS) mode = 'riff';
     }
     if (mode === 'loop' && w.sung) {
       // Try shorter passages of whole phrases, longest first, for a wrap clear of the vocal.

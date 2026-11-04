@@ -9,7 +9,7 @@ Vamper: music that waits for the game (named after *vamping*, holding a phrase u
 - Never a blank screen; every wait shows progress and a time.
 - The engine must stay small and framework-free: Alex reuses it in other apps. `Looper` (src/engine/looper.ts) is the public face; keep UI out of `src/engine`.
 - The engine is a package other apps install from this repo by commit (Mappadux does: `"vamper": "github:FrunkQ/vamper#<commit>"`). Its public API is `src/index.ts`; changing anything exported there can break them, so add rather than rename. They compile the source with stricter flags than the app, so `npm run typecheck` (which includes `tsconfig.lib.json`) must pass. Files they get are listed in `package.json` `files`.
-- Licence: MIT (since 2026-10-21; earlier versions were The Unlicense). Credit third-party code in the README. The files vendored from Gondryator keep their 'The Unlicense' header: that is the licence they came under.
+- Licence: MIT plus a credit condition (anything made with it credits Vamper by name with a link where its audience can see it), since commit e938185 on 2026-11-04; before that plain MIT (from 2026-10-21), and The Unlicense before that. Credit third-party code in the README. The files vendored from Gondryator keep their 'The Unlicense' header: that is the licence they came under.
 - Alex listens on the deployed site, https://vamper.sublime.co.uk. You can't judge audio in a container: ship, give the commit hash, and ask which joins they hear. The debug list (Joins) gives times to talk about.
 
 ## Rules of the engine

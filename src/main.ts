@@ -4,7 +4,7 @@
 // apart. Fine-tuning (which parts hold, riff or loop, your own bars) folds away underneath.
 // Choices are saved per song in this browser.
 import { Looper, type Cue, type Song } from './engine/looper';
-import { voiceShare, RIFF_VOICE_MAX, type Hold } from './engine/holds';
+import { voiceShare, RIFF_VOICE_MAX, RIFF_MIN_JUMPS, type Hold } from './engine/holds';
 import { barStarts, snapToBar, type Quantise } from './engine/plan';
 import { voiceModel } from './analysis/voice';
 import { draw, stripHit, STRIP, type ViewState } from './view';
@@ -244,11 +244,11 @@ const key = (t: number) => t.toFixed(3);
 function loadPrefs(h: string): Prefs { try { return { hold: {}, mode: {}, seed: {}, custom: [], ...JSON.parse(localStorage.getItem('holds:' + h) ?? '{}') }; } catch { return { hold: {}, mode: {}, seed: {}, custom: [] }; } }
 function savePrefs() { try { localStorage.setItem('holds:' + hash, JSON.stringify(prefs)); } catch { /* storage off: fine */ } }
 
-/** Riff when the bars are alike enough to jump between and nobody sings there; else loop. */
+/** Riff when the bars are alike enough to jump between (a few ways) and nobody sings there; else loop. */
 function autoMode(from: number, to: number): Cue['mode'] {
   if ((voiceShare(looper.score!, from, to) ?? 0) > RIFF_VOICE_MAX) return 'loop';
   const r = looper.riffFor({ from, to });
-  return r.jumps.flat().some(j => r.voiceClear(j)) ? 'riff' : 'loop';
+  return r.jumps.flat().filter(j => r.voiceClear(j)).length >= RIFF_MIN_JUMPS ? 'riff' : 'loop';
 }
 
 const barNo = (t: number) => barStarts(looper.score!).filter(b => b < t - 0.02).length + 1;
@@ -278,8 +278,8 @@ function buildCues() {
 function why(c: Cue): string {
   const h = holds.find(x => Math.abs(x.from - c.from) < 0.02 && Math.abs(x.to - c.to) < 0.02);
   const parts: string[] = [];
-  if (c.mode === 'riff') { const r = looper.riffFor(c), n = r.jumps.flat().filter(j => r.voiceClear(j)).length; parts.push(n ? `riffs, ${n} places it can jump` : 'no two bars alike enough to jump: it will just repeat'); }
-  else if (h) parts.push(h.voice !== null && h.voice > RIFF_VOICE_MAX ? `repeats, since it is sung (${Math.round(h.voice * 100)}% of it)` : h.jumps === 0 && h.voice !== null ? 'repeats: no two bars alike enough to riff on' : 'repeats');
+  if (c.mode === 'riff') { const r = looper.riffFor(c), n = r.jumps.flat().filter(j => r.voiceClear(j)).length; parts.push(n ? `riffs, ${n} ${n === 1 ? 'place' : 'places'} it can jump${n < RIFF_MIN_JUMPS ? ' (few: it will mostly repeat)' : ''}` : 'no two bars alike enough to jump: it will just repeat'); }
+  else if (h) parts.push(h.voice !== null && h.voice > RIFF_VOICE_MAX ? `repeats, since it is sung (${Math.round(h.voice * 100)}% of it)` : h.voice !== null && h.jumps === 0 ? 'repeats: no two bars alike enough to riff on' : h.voice !== null && h.jumps < RIFF_MIN_JUMPS ? `repeats: only ${h.jumps} ${h.jumps === 1 ? 'place' : 'places'} to jump, too few to riff on` : 'repeats');
   else parts.push('repeats');
   if (h?.wrapVoice !== null && h?.wrapVoice !== undefined && h.wrapVoice >= 0.3) parts.push('the repeat cuts a sung line');
   if (h && h.bars < h.sectionBars) parts.push(`shortened to ${h.bars} bars so the repeat is clear of the singing`);
@@ -345,10 +345,20 @@ function goBack() {
 
 let dragFrom: number | null = null, dragX = 0;
 const timeAt = (e: MouseEvent) => (e.offsetX / canvas.clientWidth) * (looper.buffer?.duration ?? 0);
+// A click on the strip arms a part (riffing if it can, else looping) or disarms it; a part too
+// short to hold does nothing. Hearing a part now is ▶ hear in the list, or a click on its waveform.
 canvas.onmousedown = e => {
   if (!looper.score) return;
   const hit = stripHit(looper, canvas.clientWidth, e.offsetX, e.offsetY);
-  if (hit !== null) { if (hit >= 0) looper.goTo(hit); return; }
+  if (hit !== null) {
+    const c = looper.cues[hit];
+    if (!c) return;
+    const k = key(c.from);
+    c.hold = c.hold === false; prefs.hold[k] = c.hold;
+    if (c.hold) { delete prefs.mode[k]; c.mode = holds.find(h => Math.abs(h.from - c.from) < 0.02 && Math.abs(h.to - c.to) < 0.02)?.mode ?? autoMode(c.from, c.to); }
+    savePrefs(); renderCues();
+    return;
+  }
   dragFrom = timeAt(e); dragX = e.offsetX;
 };
 canvas.onmousemove = e => {
@@ -369,6 +379,21 @@ canvas.onmouseup = e => {
 
 $('play').onclick = togglePlay;
 $('pause').onclick = togglePause;
+
+// Master volume, with Duck (half as loud to the ear, about -10 dB, for talking over) and Mute (silence),
+// both toggles that come straight back, faded over a moment so nothing clicks.
+let volume = 1, ducked = false, muted = false;
+try { volume = Math.min(1, Math.max(0, Number(localStorage.getItem('volume') ?? 1))); } catch { /* fine */ }
+$<HTMLInputElement>('volume').value = String(Math.round(volume * 100));
+function applyVolume(ramp = 0.3) {
+  looper.setVolume(muted ? 0 : ducked ? volume * 0.32 : volume, ramp);
+  $('duck').classList.toggle('on', ducked); $('mute').classList.toggle('on', muted);
+  $('duck').textContent = ducked ? '🔉 Ducked' : '🔉 Duck'; $('mute').textContent = muted ? '🔇 Muted' : '🔇 Mute';
+}
+$<HTMLInputElement>('volume').oninput = e => { volume = Number((e.target as HTMLInputElement).value) / 100; try { localStorage.setItem('volume', String(volume)); } catch { /* fine */ } applyVolume(0.05); };
+$('duck').onclick = () => { ducked = !ducked; applyVolume(); };
+$('mute').onclick = () => { muted = !muted; applyVolume(0.1); };
+applyVolume(0);
 $('prev').onclick = goBack;
 $('next').onclick = goOn;
 $('loop').onclick = () => { if (ui.selection) looper.loop(...ui.selection); };
@@ -380,6 +405,8 @@ window.addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); togglePause(); }
   else if (e.key === 'ArrowRight' || e.key === 'Enter') goOn();
   else if (e.key === 'ArrowLeft') goBack();
+  else if (e.key === 'd') { ducked = !ducked; applyVolume(); }
+  else if (e.key === 'm') { muted = !muted; applyVolume(0.1); }
   else if (e.key === 'l') { if (ui.selection) looper.loop(...ui.selection); }
   else if (e.key === 'a' || e.key === 'c') addCue();
   else if (/^[1-9]$/.test(e.key)) looper.goTo(Number(e.key) - 1);
@@ -404,11 +431,11 @@ function frame() {
     let text: string, hint: string;
     if (paused) {
       text = `Paused at bar <b>${st.bar}</b>`;
-      hint = 'Press Resume (or Space) and the music carries on from exactly here.';
+      hint = 'Press Resume (or Space): the music comes back in from a bar or so before, so the ear catches up.';
     } else if (!st.playing) {
       text = !score.final ? 'Still listening to the song. You can press Play already.' :
         list.length ? `Ready. The song will hold in <b>${list.length}</b> ${list.length === 1 ? 'place' : 'places'}: ${list.map(x => `<b>${x.c.name}</b> (${x.c.mode})`).join(', ')}.` : 'Ready. No part is set to hold, so the song will just play through.';
-      hint = 'Press Play: the song starts from the top and, when it reaches a coloured part, keeps playing that part until you press Go on. Or click a coloured part to hear it straight away.';
+      hint = 'Press Play: the song starts from the top and, when it reaches a coloured part, keeps playing that part until you press Go on. Click a part on the strip to switch its hold on or off; press ▶ hear in the list to hear one now.';
     } else if (st.pending) {
       text = `Bar <b>${st.bar}</b> · moving to <b>${st.pending.label}</b> in ${st.pending.inSec.toFixed(1)} s${st.pending.forVoice ? ' (waiting for a gap in the singing)' : ''}`;
       hint = 'The change lands on a bar line, so you shouldn\'t hear the join.';

@@ -11,7 +11,7 @@
 import { Analyzer } from '../analysis/analyzer';
 import { Cutter } from './cuts';
 import { Deck, type JoinLog } from './deck';
-import { barIndexAt, lastBar, sectionNames, type Quantise } from './plan';
+import { barIndexAt, barStarts, lastBar, sectionNames, type Quantise } from './plan';
 import { seedOf, type Riff, type RiffOptions } from './riff';
 import { findHolds, type Hold } from './holds';
 import { applyDelta, emptyScore, type Score, type ScoreDelta } from '../score/types';
@@ -273,10 +273,30 @@ export class Looper {
   loop(from: number, to: number) { this.cueIndex = -1; this.released = null; this.deck.setLoop(from, to, 'selection'); }
   /** Play on past the loop's end into the rest of the song (with autoHold, the next hold waits). */
   release() { this.released = this.playlist[this.currentCue()] ?? (this.deck.loop ? { name: '', from: this.deck.loop[0], to: this.deck.loop[1], mode: 'loop' } : null); this.deck.release(); }
-  /** Hold everything where it is (the audio clock stops), and carry on from there. */
-  pause() { void this.deck.ctx.suspend(); }
-  resume() { void this.deck.ctx.resume(); }
-  get paused() { return this.deck.ctx.state === 'suspended'; }
+  private pausing: ReturnType<typeof setTimeout> | null = null;
+  /** Fade out over `fadeSec` and hold everything where it is (the audio clock stops). */
+  pause(fadeSec = 0.4) {
+    if (this.pausing || this.paused) return;
+    if (!this.deck.playing) { void this.deck.ctx.suspend(); return; }
+    this.deck.fadeTo(0, fadeSec);
+    this.pausing = setTimeout(() => { this.pausing = null; void this.deck.ctx.suspend(); this.onChange?.(); }, fadeSec * 1000);
+  }
+  /**
+   * Carry on: from the bar line at least `rewindSec` before where it paused (so the ear gets back
+   * into the music), fading in over `fadeSec`. A hold stays a hold; a riff keeps its walk.
+   */
+  resume(rewindSec = 1.5, fadeSec = 0.3) {
+    if (this.pausing) { clearTimeout(this.pausing); this.pausing = null; }
+    const d = this.deck;
+    void d.ctx.resume();
+    if (!d.playing || !this.score) { d.fadeTo(1, fadeSec); return; }
+    const at = d.position, floor = d.loop ? d.loop[0] : 0;
+    const back = Math.max(floor, barStarts(this.score).filter(t => t <= at - rewindSec).pop() ?? 0);
+    d.fadeTo(0, 0);
+    d.play(back, d.loop, d.riff);
+    d.fadeTo(1, fadeSec);
+  }
+  get paused() { return this.deck.ctx.state === 'suspended' || this.pausing !== null; }
   /** Output level, 0..1 linear gain, faded over `rampSec`. */
   setVolume(gain: number, rampSec = 0) { this.deck.setVolume(gain, rampSec); }
   /** Done with this Looper: stops the worker, the audio and the AudioContext. */
